@@ -1,0 +1,14 @@
+C:\Users\Salvatore\Desktop\BG_ELPT_Softwarew\ConfiguratioFiles_Tester\bin\Debug\ConfiguratioFiles_Tester.exe
+C:\Users\Salvatore\Desktop\BG_ELPT_Softwarew\ConfiguratioFiles_Tester\bin\Debug\ConfiguratioFiles_Tester.pdb
+C:\Users\Salvatore\Desktop\BG_ELPT_Softwarew\ConfiguratioFiles_Tester\bin\Debug\ConfigurationFilesReader.dll
+C:\Users\Salvatore\Desktop\BG_ELPT_Softwarew\ConfiguratioFiles_Tester\bin\Debug\ConfigurationFilesReader.pdb
+C:\Users\Salvatore\Desktop\BG_ELPT_Softwarew\ConfiguratioFiles_Tester\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\Salvatore\Desktop\BG_ELPT_Softwarew\ConfiguratioFiles_Tester\obj\Debug\ConfiguratioFiles_Tester.exe
+C:\Users\Salvatore\Desktop\BG_ELPT_Softwarew\ConfiguratioFiles_Tester\obj\Debug\ConfiguratioFiles_Tester.pdb
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfiguratioFiles_Tester\bin\Debug\ConfiguratioFiles_Tester.exe
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfiguratioFiles_Tester\bin\Debug\ConfiguratioFiles_Tester.pdb
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfiguratioFiles_Tester\bin\Debug\ConfigurationFilesReader.dll
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfiguratioFiles_Tester\bin\Debug\ConfigurationFilesReader.pdb
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfiguratioFiles_Tester\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfiguratioFiles_Tester\obj\Debug\ConfiguratioFiles_Tester.exe
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfiguratioFiles_Tester\obj\Debug\ConfiguratioFiles_Tester.pdb

@@ -1,0 +1,5 @@
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfigurationFilesReader\bin\Release\ConfigurationFilesReader.dll
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfigurationFilesReader\bin\Release\ConfigurationFilesReader.pdb
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfigurationFilesReader\obj\Release\ResolveAssemblyReference.cache
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfigurationFilesReader\obj\Release\ConfigurationFilesReader.dll
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfigurationFilesReader\obj\Release\ConfigurationFilesReader.pdb

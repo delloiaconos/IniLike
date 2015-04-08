@@ -1,0 +1,7 @@
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfiguratioFiles_Tester\bin\Release\ConfiguratioFiles_Tester.exe
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfiguratioFiles_Tester\bin\Release\ConfiguratioFiles_Tester.pdb
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfiguratioFiles_Tester\bin\Release\ConfigurationFilesReader.dll
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfiguratioFiles_Tester\bin\Release\ConfigurationFilesReader.pdb
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfiguratioFiles_Tester\obj\Release\ResolveAssemblyReference.cache
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfiguratioFiles_Tester\obj\Release\ConfiguratioFiles_Tester.exe
+C:\Users\Salvatore\Desktop\BG_ELPT_Software\ConfiguratioFiles_Tester\obj\Release\ConfiguratioFiles_Tester.pdb
