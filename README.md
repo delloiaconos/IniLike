@@ -110,6 +110,21 @@ synchronized.
 
 ## Build
 
+With GNU Make and Mono installed, use:
+
+```sh
+make build
+make clean
+make test
+```
+
+`build` is the default target. `clean` removes the library's entire `bin` and
+`obj` directories, including Debug, Release, and stale build artifacts.
+`test` runs the Python test runner, which builds its own temporary copy of the
+library. Build and test default to Release; select Debug
+with `CONFIGURATION=Debug`, for example `make test CONFIGURATION=Debug`.
+Tests also require Python 3; override its command with `PYTHON=python3` if needed.
+
 `IniLike.sln` contains the library project. Build it with a toolchain that
 supports .NET Framework 3.5, for example Mono:
 
