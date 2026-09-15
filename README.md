@@ -1,133 +1,150 @@
 # IniLike
 
-Libreria C# per leggere un formato INI esteso con tabelle testuali. Il namespace
-e il nome dell'assembly sono **ConfigurationFilesReader**; la classe pubblica è
+IniLike is a standalone C# library for reading INI-like configuration files with
+text tables. It targets .NET Framework 3.5. The namespace and assembly name are
+**ConfigurationFilesReader**, and the public class is
 `ConfigurationFilesReader.ConfigurationFile`.
 
-IniLike mantiene il parser storico e aggiunge `SetParameter`, compatibile con
-il metodo già utilizzato in OperatorUI, per impostare parametri in memoria.
-OperatorUI continua a compilare la propria copia della libreria: questo
-aggiornamento non modifica i riferimenti del suo progetto.
-
-## Formato dei file
+## File format
 
 ```ini
-## Commento su una riga intera
-[MYSQL]
-server = localhost;
-port = 3306;
+## Full-line comment
+[SERVER]
+host = localhost;
+port = 8080;
 enabled = TRUE;
 
 [DIRECTORIES]
-TestConfigDir = ./ricette/;
+data = ./data/;
 
-[TABLE:TEST_PHASES]
-APERTURA; BLOCCHI_APERTURA; 2; preprocess.py;
-CHIUSURA; BLOCCHI_CHIUSURA; 1; preprocess.py;
+[TABLE:ITEMS]
+first; 10; active;
+second; 20; inactive;
 ```
 
-- `[SEZIONE]` contiene coppie `chiave = valore`.
-- `[TABLE:NOME]` contiene righe opache: la libreria restituisce `List<string>` e
-  lascia al chiamante la suddivisione delle colonne.
-- Nomi di sezioni, chiavi e tabelle sono **case-sensitive**; il prefisso `TABLE:`
-  deve essere maiuscolo. Sezioni e tabelle hanno dizionari distinti.
-- Righe vuote e righe che iniziano con `##`, dopo il trim, vengono ignorate.
-- Spazi iniziali/finali delle righe vengono rimossi. Da valori e righe di tabella
-  vengono eliminati tutti i caratteri finali presenti in `;`, `,`, `.`.
-- Una coppia chiave/valore deve produrre **esattamente due parti** dividendo per
-  `=`. Una riga come `expression = a=b;` viene ignorata.
-- Non ci sono quoting, escaping, valori multilinea o commenti inline. Le
-  virgolette rimangono parte del valore. Una riga `; commento` non è un commento
-  riconosciuto: in una tabella diventa una riga dati.
-- Sezioni, tabelle o chiavi duplicate provocano un'eccezione.
-- Un percorso relativo del file viene risolto rispetto alla directory di lavoro.
-  I valori contenenti percorsi vengono restituiti come testo, senza risoluzione.
+- `[SECTION]` contains `key = value` pairs.
+- `[TABLE:NAME]` contains text rows. The library returns a `List<string>`;
+  callers are responsible for splitting rows into columns.
+- Section, key, and table names are **case-sensitive**. The `TABLE:` prefix
+  must be uppercase. Sections and tables use separate dictionaries and may
+  share a name.
+- Blank lines and lines starting with `##` after trimming are ignored.
+- Leading and trailing whitespace is trimmed from lines, section names, keys,
+  and values. All trailing `;`, `,`, and `.` characters are then removed from
+  values and table rows. Whitespace exposed by removing these delimiters is
+  preserved.
+- A key/value line must split into **exactly two parts** at `=`. Lines such as
+  `expression = a=b;` are ignored.
+- Quoting, escaping, multiline values, and inline comments are not supported.
+  Quotes remain part of the value. A line such as `; comment` is treated as
+  data inside a table.
+- Duplicate sections, tables, or keys within a section cause an exception.
+- Lines before the first section or table are ignored.
+- Relative configuration file paths are resolved against the working directory.
+  Paths stored as values are returned as text without resolution.
 
-Il delimitatore finale `.` può alterare dati significativi: `value...` diventa
-`value`; il solo `.` diventa una stringa vuota. Usare ad esempio `./` per la
-cartella corrente. Il parser non interpreta il formato INI come uno standard completo.
+The trailing `.` delimiter can alter meaningful data: `value...` becomes
+`value`, and a single `.` becomes an empty string. Use `./` to represent the
+current directory. The parser supports the format described here rather than
+a complete INI specification.
 
-## API
+## Usage
+
+Reference `ConfigurationFilesReader.dll` and use the public API:
 
 ```csharp
 using ConfigurationFilesReader;
 using System.Collections.Generic;
 
 var config = new ConfigurationFile("config.ini");
-string host = config.getParameter("MYSQL", "server", "localhost");
-int port = config.getParameter("MYSQL", "port", 3306);
-bool enabled = config.getParameter("MYSQL", "enabled", false);
-List<string> phases = config.getTable("TEST_PHASES");
+string host = config.getParameter("SERVER", "host", "localhost");
+int port = config.getParameter("SERVER", "port", 8080);
+bool enabled = config.getParameter("SERVER", "enabled", false);
+List<string> items = config.getTable("ITEMS");
 
-// Crea o aggiorna il parametro in memoria; config.ini resta invariato.
-config.SetParameter("DIRECTORIES", "TestConfigDir", "./altre-ricette/");
+// Create or update a parameter in memory. The source file is unchanged.
+config.SetParameter("DIRECTORIES", "data", "./other-data/");
 ```
 
-| Membro | Comportamento |
+To create a configuration entirely in memory:
+
+```csharp
+var config = new ConfigurationFile();
+config.SetParameter("SERVER", "port", "8080");
+int port = config.getParameter("SERVER", "port", 80);
+```
+
+## API reference
+
+| Member | Behavior |
 | --- | --- |
-| `ConfigurationFile(string filename)` | Carica subito il file; file assente o errori di parsing generano eccezioni. |
-| `ConfigurationFile()` | Crea un contenitore vuoto, senza caricare file. |
-| `checkSection(string)` | Verifica le sole sezioni, non le tabelle. |
-| `getParameter(section, key, string defaultValue)` | Valore testuale o default se manca sezione/chiave. |
-| `getParameter(..., bool)` | Solo `TRUE`, ignorando maiuscole e spazi, vale true. Un valore presente diverso da TRUE vale false, anche se il default è true. |
-| `getParameter(..., double/float)` | Conversione con cultura invariabile; la virgola viene sostituita dal punto. Conversione fallita: default. |
-| `getParameter(..., long/int)` | Conversione intera con cultura invariabile; default se il parsing fallisce. L'overload int converte prima in long e poi esegue un cast non controllato: valori fuori intervallo int possono andare in overflow senza usare il default. |
-| `getTable(name)` | Restituisce la lista interna modificabile; tabella assente: nuova lista vuota non collegata al contenitore. |
-| `SetParameter(string sectionName, string parameterName, string value)` | Crea la sezione e la chiave se mancanti; sovrascrive il valore se presente. Memorizza il testo senza parsing o trim, rispettando maiuscole/minuscole dei nomi. Non scrive file, anche con `UpdateFile=true`. |
-| `addParameter(...)` | Metodo dichiarato ma **non implementato**: non modifica memoria né file. |
-| `UpdateFile` | Campo pubblico, default false; vedere i limiti sotto. |
-| `parSeparator`, `parEndLineDelimiter` | Array pubblici, default `=` e `; , .`. Il caricamento avviene nel costruttore, prima che il chiamante possa cambiarli; manca un metodo pubblico di reload. |
+| `ConfigurationFile(string filename)` | Loads the file immediately. Missing files and parsing errors cause exceptions. |
+| `ConfigurationFile()` | Creates an empty container without loading a file. |
+| `checkSection(string)` | Checks for a section, excluding tables. With `UpdateFile=true`, a missing section also triggers the file side effect described below. |
+| `getParameter(section, key, string defaultValue)` | Returns the stored text, or the default if the section or key is missing. |
+| `getParameter(..., bool)` | Only `TRUE`, ignoring case and surrounding whitespace, is true. Any other stored value is false, even when the default is true. |
+| `getParameter(..., double/float)` | Parses using invariant culture after replacing commas with periods. Returns the default if parsing fails. |
+| `getParameter(..., long/int)` | Parses an integer using invariant culture. Returns the default if parsing fails. The int overload parses as long and then performs an unchecked cast, so values outside the int range can wrap instead of returning the default. |
+| `getTable(name)` | Returns the mutable internal list. For a missing table, returns a new empty list that is not attached to the container. |
+| `SetParameter(string sectionName, string parameterName, string value)` | Creates missing sections and keys or replaces an existing value. Stores text without parsing or trimming and preserves case-sensitive names. Never writes files, including when `UpdateFile=true`. |
+| `addParameter(...)` | Declared but **not implemented**. Changes neither memory nor files. |
+| `UpdateFile` | Public field, false by default. See limitations below. |
+| `parSeparator`, `parEndLineDelimiter` | Public arrays defaulting to `=` and `; , .`. Loading occurs in the constructor before callers can change them. There is no public reload method. |
 
-## Limiti della scrittura
+## Limitations
 
-`SetParameter` permette override in memoria, anche su un contenitore creato con
-`ConfigurationFile()`. Le successive letture con `getParameter` utilizzano il
-nuovo valore e le consuete conversioni di tipo. Non è prevista persistenza
-delle modifiche su disco.
+`SetParameter` supports in-memory overrides. Subsequent `getParameter` calls
+use the new values and the usual type conversions. Changes are not persisted
+to disk.
 
-`UpdateFile=true` non offre
-un salvataggio INI funzionante: se manca una sezione, `addSection` apre un file
-con **il nome della sezione**, nella directory di lavoro, invece del file INI
-originale. Non aggiorna il dizionario in memoria. `addParameter` è vuoto.
-Lasciare `UpdateFile=false`; per gli override runtime usare `SetParameter`.
+`UpdateFile=true` does not provide working INI persistence. Checking or reading
+a missing section opens or creates a file **named after that section** in the
+working directory and appends a section header. It does not update the original
+configuration file or add the section to the in-memory dictionary.
+`addParameter` does nothing. Keep `UpdateFile=false` and use `SetParameter`
+for in-memory changes.
 
-Le risorse del lettore non sono protette da `using/finally`: errori durante il
-parsing possono lasciare il file aperto fino alla raccolta del garbage collector.
-Non è presente sincronizzazione per modifiche concorrenti.
+The file reader is not protected by `using` or `finally`. Parsing errors may
+leave the file open until garbage collection. Concurrent changes are not
+synchronized.
 
-## Compilazione e test automatici
+## Build
 
-`IniLike.sln` contiene il solo progetto della libreria .NET Framework 3.5.
-Il vecchio progetto dimostrativo `ConfiguratioFiles_Tester` è sostituito dalla
-suite di regressione in `tests`.
+`IniLike.sln` contains the library project. Build it with a toolchain that
+supports .NET Framework 3.5, for example Mono:
 
-Prerequisiti per la suite: Python 3 e Mono con `xbuild`, `mcs` e `mono` nel PATH.
-Non sono necessari pacchetti Python o framework di test aggiuntivi.
+```sh
+xbuild IniLike.sln /p:Configuration=Release
+```
+
+The resulting assembly is
+`ConfigurationFilesReader/bin/Release/ConfigurationFilesReader.dll`.
+
+## Automated tests
+
+Prerequisites: Python 3 and Mono, with `xbuild`, `mcs`, and `mono` available on
+`PATH`. No additional Python packages or test frameworks are required.
+
+Run from the repository root:
 
 ```sh
 python3 tests/run.py
 python3 tests/run.py --configuration Debug
 ```
 
-Il runner compila la soluzione dai sorgenti in una directory temporanea e testa
-l'assembly risultante tramite `ConfigurationFileTests.cs`. Ogni caso usa una
-cartella isolata, eliminata al termine; anche i file creati dal comportamento
-storico di `UpdateFile` restano in questa cartella. Gli artefatti di compilazione
-non vengono scritti nel repository. Il comando restituisce un codice diverso
-da zero se la compilazione o un test fallisce e stampa un riepilogo dei risultati.
+The runner builds the solution from source in a temporary directory and tests
+the resulting assembly using `tests/ConfigurationFileTests.cs`. Each test runs
+in an isolated directory that is removed afterward, including files created by
+`UpdateFile`. Build artifacts are kept outside the repository. The command
+prints a result summary and exits with a nonzero status if a build or test fails.
 
-La suite copre sezioni, tabelle e liste modificabili, commenti, delimitatori,
-Unicode, sensibilità alle maiuscole, default di tutti gli overload, conversioni
-numeriche in tre culture, limiti interi, booleani, file mancanti, duplicati,
-override in memoria e assenza di persistenza. I test fissano anche i limiti
-storici descritti sopra, compresi il cast int e gli effetti di `UpdateFile`.
+The suite covers:
 
-La verifica aggiuntiva di compatibilità con una build di OperatorUI dotata di
-`SetParameter` è opzionale:
-
-```sh
-python3 tests/run.py --operator-ui /percorso/OperatorUI.exe
-```
-
-Questo comando esegue anche `tests/CompatibilityProbe.cs` confrontando le due
-implementazioni. La suite ordinaria non richiede OperatorUI.
+- Sections, tables, mutable lists, and transitions between sections and tables.
+- Comments, whitespace, delimiters, Unicode, and case-sensitive names.
+- Defaults for every getter overload, boolean conversion, and numeric conversion
+  under three cultures, including integer boundaries and overflow behavior.
+- Empty files, missing files, and duplicate sections, tables, and keys.
+- In-memory overrides and source file preservation.
+- The documented behavior of `addParameter`, `UpdateFile`, and public delimiter
+  arrays.
