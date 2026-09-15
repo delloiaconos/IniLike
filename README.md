@@ -94,3 +94,40 @@ Lasciare `UpdateFile=false`; per gli override runtime usare `SetParameter`.
 Le risorse del lettore non sono protette da `using/finally`: errori durante il
 parsing possono lasciare il file aperto fino alla raccolta del garbage collector.
 Non è presente sincronizzazione per modifiche concorrenti.
+
+## Compilazione e test automatici
+
+`IniLike.sln` contiene il solo progetto della libreria .NET Framework 3.5.
+Il vecchio progetto dimostrativo `ConfiguratioFiles_Tester` è sostituito dalla
+suite di regressione in `tests`.
+
+Prerequisiti per la suite: Python 3 e Mono con `xbuild`, `mcs` e `mono` nel PATH.
+Non sono necessari pacchetti Python o framework di test aggiuntivi.
+
+```sh
+python3 tests/run.py
+python3 tests/run.py --configuration Debug
+```
+
+Il runner compila la soluzione dai sorgenti in una directory temporanea e testa
+l'assembly risultante tramite `ConfigurationFileTests.cs`. Ogni caso usa una
+cartella isolata, eliminata al termine; anche i file creati dal comportamento
+storico di `UpdateFile` restano in questa cartella. Gli artefatti di compilazione
+non vengono scritti nel repository. Il comando restituisce un codice diverso
+da zero se la compilazione o un test fallisce e stampa un riepilogo dei risultati.
+
+La suite copre sezioni, tabelle e liste modificabili, commenti, delimitatori,
+Unicode, sensibilità alle maiuscole, default di tutti gli overload, conversioni
+numeriche in tre culture, limiti interi, booleani, file mancanti, duplicati,
+override in memoria e assenza di persistenza. I test fissano anche i limiti
+storici descritti sopra, compresi il cast int e gli effetti di `UpdateFile`.
+
+La verifica aggiuntiva di compatibilità con una build di OperatorUI dotata di
+`SetParameter` è opzionale:
+
+```sh
+python3 tests/run.py --operator-ui /percorso/OperatorUI.exe
+```
+
+Questo comando esegue anche `tests/CompatibilityProbe.cs` confrontando le due
+implementazioni. La suite ordinaria non richiede OperatorUI.
