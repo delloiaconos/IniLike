@@ -132,6 +132,14 @@ namespace ConfigurationFilesReader
             }
         }
 
+        // Runtime override only: the source INI is never written.
+        public void SetParameter(string sectionName, string parameterName, string value)
+        {
+            if (!dictSections.ContainsKey(sectionName))
+                dictSections.Add(sectionName, new strDictionary());
+            dictSections[sectionName][parameterName] = value;
+        }
+
         public void addParameter(string SectionName, string ParameterName, string DefaultValue)
         {
             

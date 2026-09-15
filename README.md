@@ -4,11 +4,10 @@ Libreria C# per leggere un formato INI esteso con tabelle testuali. Il namespace
 e il nome dell'assembly sono **ConfigurationFilesReader**; la classe pubblica è
 `ConfigurationFilesReader.ConfigurationFile`.
 
-Questo README descrive i sorgenti effettivamente presenti in questa cartella.
-Alla verifica del 15 settembre 2026, `ConfigurationFile.cs` è **identico byte per
-byte** al sorgente storico in `ELPT_V0/BG_ELPT_Software/ConfigurationFilesReader`.
-Nei file disponibili non risultano quindi estensioni rispetto a quella versione.
-La copia attuale di OperatorUI aggiunge invece il metodo `SetParameter`.
+IniLike mantiene il parser storico e aggiunge `SetParameter`, compatibile con
+il metodo già utilizzato in OperatorUI, per impostare parametri in memoria.
+OperatorUI continua a compilare la propria copia della libreria: questo
+aggiornamento non modifica i riferimenti del suo progetto.
 
 ## Formato dei file
 
@@ -59,6 +58,9 @@ string host = config.getParameter("MYSQL", "server", "localhost");
 int port = config.getParameter("MYSQL", "port", 3306);
 bool enabled = config.getParameter("MYSQL", "enabled", false);
 List<string> phases = config.getTable("TEST_PHASES");
+
+// Crea o aggiorna il parametro in memoria; config.ini resta invariato.
+config.SetParameter("DIRECTORIES", "TestConfigDir", "./altre-ricette/");
 ```
 
 | Membro | Comportamento |
@@ -71,19 +73,24 @@ List<string> phases = config.getTable("TEST_PHASES");
 | `getParameter(..., double/float)` | Conversione con cultura invariabile; la virgola viene sostituita dal punto. Conversione fallita: default. |
 | `getParameter(..., long/int)` | Conversione intera con cultura invariabile; default se il parsing fallisce. L'overload int converte prima in long e poi esegue un cast non controllato: valori fuori intervallo int possono andare in overflow senza usare il default. |
 | `getTable(name)` | Restituisce la lista interna modificabile; tabella assente: nuova lista vuota non collegata al contenitore. |
+| `SetParameter(string sectionName, string parameterName, string value)` | Crea la sezione e la chiave se mancanti; sovrascrive il valore se presente. Memorizza il testo senza parsing o trim, rispettando maiuscole/minuscole dei nomi. Non scrive file, anche con `UpdateFile=true`. |
 | `addParameter(...)` | Metodo dichiarato ma **non implementato**: non modifica memoria né file. |
 | `UpdateFile` | Campo pubblico, default false; vedere i limiti sotto. |
 | `parSeparator`, `parEndLineDelimiter` | Array pubblici, default `=` e `; , .`. Il caricamento avviene nel costruttore, prima che il chiamante possa cambiarli; manca un metodo pubblico di reload. |
 
 ## Limiti della scrittura
 
-Questa implementazione va usata come **lettore**. `UpdateFile=true` non offre
+`SetParameter` permette override in memoria, anche su un contenitore creato con
+`ConfigurationFile()`. Le successive letture con `getParameter` utilizzano il
+nuovo valore e le consuete conversioni di tipo. Non è prevista persistenza
+delle modifiche su disco.
+
+`UpdateFile=true` non offre
 un salvataggio INI funzionante: se manca una sezione, `addSection` apre un file
 con **il nome della sezione**, nella directory di lavoro, invece del file INI
 originale. Non aggiorna il dizionario in memoria. `addParameter` è vuoto.
-Lasciare `UpdateFile=false`; non usarlo per persistenza o override runtime.
+Lasciare `UpdateFile=false`; per gli override runtime usare `SetParameter`.
 
 Le risorse del lettore non sono protette da `using/finally`: errori durante il
 parsing possono lasciare il file aperto fino alla raccolta del garbage collector.
 Non è presente sincronizzazione per modifiche concorrenti.
-
