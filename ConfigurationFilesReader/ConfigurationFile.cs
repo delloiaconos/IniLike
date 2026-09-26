@@ -20,22 +20,22 @@ namespace ConfigurationFilesReader
         public readonly char[] parEndLineDelimiter = { ';', ',', '.' };
         public readonly bool autoUpdateFile = false;
 
-        private string FileName;
+        private string strFileName;
         private Dictionary<string, strDictionary> dictSections;
         private Dictionary<string, strTable> dictTables;
         
-        public ConfigurationFile(string filename)
+        public ConfigurationFile(string strFileName)
         {
-            FileName = filename;
+            strFileName = strFileName;
             dictSections = new Dictionary<string, strDictionary>();
             dictTables = new Dictionary<string, strTable>();
             if (!loadFile())
-                throw new System.Exception("Impossibile aprire il file: '" + FileName + "'.");
+                throw new System.Exception("Impossibile aprire il file: '" + strFileName + "'.");
         }
 
         public ConfigurationFile()
         {
-            FileName = "";
+            strFileName = "";
             dictSections = new Dictionary<string, strDictionary>();
             dictTables = new Dictionary<string, strTable>();
             
@@ -44,9 +44,9 @@ namespace ConfigurationFilesReader
         // Load the configuration file content.
         private bool loadFile()
         {
-            if (File.Exists(FileName))
+            if (File.Exists(strFileName))
             {
-                using (StreamReader srFile = new StreamReader(FileName))
+                using (StreamReader srFile = new StreamReader(strFileName))
                 {
 
                     string currentParent = "";
