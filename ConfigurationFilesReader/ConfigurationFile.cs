@@ -30,7 +30,7 @@ namespace ConfigurationFilesReader
             dictSections = new Dictionary<string, strDictionary>();
             dictTables = new Dictionary<string, strTable>();
             if (!loadFile())
-                throw new System.Exception("Impossibile aprire il file: '" + strFileName + "'.");
+                throw new System.Exception("Unable to open file: '" + strFileName + "'.");
         }
 
         public ConfigurationFile()
