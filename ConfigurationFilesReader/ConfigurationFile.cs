@@ -332,7 +332,7 @@ namespace ConfigurationFilesReader
         {
             string strParameter = getParameter(SectionName, ParameterName, DefaultValue ? "TRUE" : "FALSE");
             strParameter = strParameter.Trim().ToUpper();
-            return strParameter.CompareTo("TRUE") == 0 ? true : false;
+            return strParameter == "TRUE" || strParameter == "1";
         }
 
         // Get a double parameter.

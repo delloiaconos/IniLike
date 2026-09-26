@@ -239,16 +239,19 @@ class ConfigurationFileTests
     static void booleans()
     {
         ConfigurationFile cfg = new ConfigurationFile { autoUpdateRegistry = true };
-        foreach (string value in new string[] { "TRUE", "true", " TrUe \t" })
+        foreach (string value in new string[] { "TRUE", "true", " TrUe \t", "1", " 1\t" })
         {
             cfg.setParameter("S", "b", value);
             equal(true, cfg.getParameter("S", "b", false));
         }
-        foreach (string value in new string[] { "FALSE", "false", "yes", "1", "0", "", "invalid" })
+        foreach (string value in new string[] { "FALSE", "false", "yes", "0", " 0\t", "2", "-1", "", "invalid" })
         {
             cfg.setParameter("S", "b", value);
             equal(false, cfg.getParameter("S", "b", true));
         }
+        ConfigurationFile parsed = load("[S]\non=1;\noff=0;\n");
+        equal(true, parsed.getParameter("S", "on", false));
+        equal(false, parsed.getParameter("S", "off", true));
     }
 
     static void overrides()

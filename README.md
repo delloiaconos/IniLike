@@ -130,7 +130,7 @@ Relative paths are resolved against the working directory when their path object
 | `ConfigurationFile()` | Creates an empty container without loading a file; automatic creation is disabled. |
 | `checkSection(string)` | Checks for a section, excluding tables. Never creates sections or writes files. |
 | `getParameter(section, key, string defaultValue)` | Returns the stored text, or the default if the section or key is missing. With `autoUpdateRegistry=true`, stores that missing default, creating the section if needed; also saves it when `autoSaveRegistry=true`. |
-| `getParameter(..., bool)` | Only `TRUE`, ignoring case and surrounding whitespace, is true. Any other stored value is false, even when the default is true. |
+| `getParameter(..., bool)` | `TRUE` (case-insensitive) and `1` are true; `FALSE` and `0` are false. Surrounding whitespace is ignored. Other stored values remain false, even when the default is true. |
 | `getParameter(..., double/float)` | Parses using invariant culture after replacing commas with periods. Returns the default if parsing fails. |
 | `getParameter(..., long/int)` | Parses an integer using invariant culture. Returns the default if parsing fails. The int overload parses as long and then performs an unchecked cast, so values outside the int range can wrap instead of returning the default. |
 | `getTable(name)` | Returns the mutable internal list. For a missing table, returns a new empty list that is not attached to the container. |
