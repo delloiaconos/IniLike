@@ -26,16 +26,21 @@ second; 20; inactive;
 - `[TABLE:NAME]` and `[TBL:NAME]` are equivalent table headers containing text rows.
   The library returns a `List<string>`;
   callers are responsible for splitting rows into columns.
-- A section or table may end with `[END]` or `[END:NAME]`. The closing name, when supplied
+- `[LIST:NAME]` and `[LST:NAME]` are equivalent list headers. Every data line is
+  one string item: `mach1;` becomes `mach1`, and `x1=mach1.volt1` remains the
+  complete string `x1=mach1.volt1`. Items are not parsed as key/value pairs;
+  order and duplicates are preserved. Lists use the same whitespace trimming,
+  trailing delimiters and full-line comment rules as tables.
+- A section, table or list may end with `[END]` or `[END:NAME]`. The closing name, when supplied
   for an active block, must match its name (after trimming); a mismatch throws
   `FormatException`. Closing markers are not sections or table rows. Subsequent
-  data is ignored until another section or table header. A closing marker outside
+  data is ignored until another section, table or list header. A closing marker outside
   block also resets the parser to that state. Without a closing marker, the
-  next section/table header or end of file ends the block. Saving uses the
-  canonical `[NAME]` and `[TABLE:NAME]` forms without closing markers.
+  next section/table/list header or end of file ends the block. Saving uses the
+  canonical `[NAME]`, `[TABLE:NAME]` and `[LIST:NAME]` forms without closing markers.
 - Section, key, and table names are **case-sensitive**. The `SEC:`, `SECTION:`,
-  `TABLE:`, `TBL:` and `END` keywords
-  must be uppercase. Sections and tables use separate dictionaries and may
+  `TABLE:`, `TBL:`, `LIST:`, `LST:` and `END` keywords
+  must be uppercase. Sections, tables and lists use separate dictionaries and may
   share a name.
 - Blank lines and lines starting with any nonempty prefix in `parComment` after
   trimming are ignored. The default prefix is `##`. Matching is ordinal and
@@ -43,14 +48,15 @@ second; 20; inactive;
   to full-line comments. Null or empty prefix entries are ignored.
 - Leading and trailing whitespace is trimmed from lines, section names, keys,
   and values. All trailing `;`, `,`, and `.` characters are then removed from
-  values and table rows. Whitespace exposed by removing these delimiters is
+  values, table rows and list items. Whitespace exposed by removing these delimiters is
   preserved.
 - A key/value line must split into **exactly two parts** at `=`. Lines such as
   `expression = a=b;` are ignored.
 - Quoting, escaping, multiline values, and inline comments are not supported.
   Quotes remain part of the value. A line such as `; comment` is treated as
   data inside a table.
-- Duplicate sections, tables, or keys within a section cause an exception.
+- Duplicate section, table or list names within their respective dictionaries,
+  or duplicate keys within a section, cause an exception. Repeated list items are allowed.
 - Lines before the first section or table are ignored.
 - Relative configuration file paths are resolved against the working directory.
   Paths stored as values are returned as text without resolution.
@@ -109,6 +115,8 @@ classDiagram
         +getParameter(string SectionName, string ParameterName, long DefaultValue) long
         +getParameter(string SectionName, string ParameterName, int DefaultValue) int
         +getTable(string TableName) List~string~
+        +getList(string ListName) List~string~
+        +listLists() List~string~
         +listSections() List~string~
         +listParameters(string Section) List~string~
         +listParameters() List~string~
@@ -148,6 +156,8 @@ Relative paths are resolved against the working directory when their path object
 | `getParameter(..., double/float)` | Parses using invariant culture after replacing commas with periods. Returns the default if parsing fails. |
 | `getParameter(..., long/int)` | Parses an integer using invariant culture. Returns the default if parsing fails. The int overload parses as long and then performs an unchecked cast, so values outside the int range can wrap instead of returning the default. |
 | `getTable(name)` | Returns the mutable internal list. For a missing table, returns a new empty list that is not attached to the container. |
+| `getList(string ListName)` | Returns the mutable internal list of string items. A missing list returns a new, unattached empty list. Null throws `ArgumentNullException`. Never creates a list or triggers saving. |
+| `listLists()` | Returns an independent, ordinally sorted snapshot of list names, excluding sections and tables. |
 | `listSections()` | Returns section names, excluding tables. |
 | `listParameters(string Section)` | Returns parameter names in the specified section. Missing or empty sections return an empty list; null throws `ArgumentNullException`. |
 | `listParameters()` | Returns distinct parameter names across all sections. The same name in multiple sections appears once; names differing in case remain distinct. |
@@ -210,13 +220,13 @@ config.save(new System.IO.FileInfo("backup.ini"));
 config.save(new System.IO.FileInfo("backups"), "config.ini");
 ```
 
-All overloads save the current in-memory sections, parameters and table rows.
+All overloads save the current in-memory sections, parameters, table rows and list items.
 Explicit destinations do not change the original path used by `save()`. An
 in-memory configuration always needs an explicit destination, even after its
 first save. Parent directories must already exist; null arguments are rejected.
 
 Output uses UTF-8 without a BOM, ordinally sorted section/parameter/table names,
-and the current order of table rows. Comments, source ordering and original
+and the current order of table rows and list items. Comments, source ordering and original
 formatting are not preserved. Saving uses the standard `=` separator and `;`
 terminator regardless of mutations to the public delimiter arrays.
 

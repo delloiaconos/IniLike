@@ -14,7 +14,7 @@ namespace ConfigurationFilesReader
 
     public class ConfigurationFile
     {
-        private enum SectionType { None = 0, Section, Table };
+        private enum SectionType { None = 0, Section, Table, List };
 
         public readonly string[] parComment = { "##" };
         public readonly char[] parSeparator = { '=' };
@@ -25,6 +25,7 @@ namespace ConfigurationFilesReader
         private readonly FileInfo FilePath;
         private Dictionary<string, strDictionary> dictSections;
         private Dictionary<string, strTable> dictTables;
+        private Dictionary<string, List<string>> dictLists;
         
         public ConfigurationFile(string FileName)
             : this(new FileInfo(FileName))
@@ -52,6 +53,7 @@ namespace ConfigurationFilesReader
         {
             dictSections = new Dictionary<string, strDictionary>();
             dictTables = new Dictionary<string, strTable>();
+            dictLists = new Dictionary<string, List<string>>();
         }
 
         private static FileInfo combinePath(DirectoryInfo BaseDirectory, string FileName)
@@ -108,6 +110,12 @@ namespace ConfigurationFilesReader
                             currentParent = currentLine.Substring(PrefixLength, currentLine.Length - PrefixLength - 1).Trim();
                             reading = SectionType.Table;
                             dictTables.Add(currentParent, new strTable());
+                        } else if ((currentLine.StartsWith("[LIST:", StringComparison.Ordinal) ||
+                                    currentLine.StartsWith("[LST:", StringComparison.Ordinal)) && currentLine.EndsWith("]", StringComparison.Ordinal)) {
+                            int PrefixLength = currentLine.StartsWith("[LIST:", StringComparison.Ordinal) ? 6 : 5;
+                            currentParent = currentLine.Substring(PrefixLength, currentLine.Length - PrefixLength - 1).Trim();
+                            reading = SectionType.List;
+                            dictLists.Add(currentParent, new List<string>());
                         } else if (currentLine.StartsWith("[") && currentLine.EndsWith("]")) {
                             int PrefixLength = 1;
                             if (currentLine.StartsWith("[SECTION:", StringComparison.Ordinal)) {
@@ -127,6 +135,8 @@ namespace ConfigurationFilesReader
                         } else if (reading == SectionType.Table && currentLine.Length > 0) {
                             currentLine = currentLine.Trim().TrimEnd(parEndLineDelimiter);
                             dictTables[currentParent].Add(currentLine);
+                        } else if (reading == SectionType.List && currentLine.Length > 0) {
+                            dictLists[currentParent].Add(currentLine.TrimEnd(parEndLineDelimiter));
                         }
                     }
                 }
@@ -167,6 +177,12 @@ namespace ConfigurationFilesReader
                 Writer.WriteLine("[TABLE:" + Table + "]");
                 foreach (string Row in dictTables[Table]) {
                     Writer.WriteLine(Row + ";");
+                }
+            }
+            foreach (string Name in listLists()) {
+                Writer.WriteLine("[LIST:" + Name + "]");
+                foreach (string Item in dictLists[Name]) {
+                    Writer.WriteLine(Item + ";");
                 }
             }
             Writer.Flush();
@@ -245,7 +261,7 @@ namespace ConfigurationFilesReader
         // Validate serialized data with the same parser used by callers.
         private bool hasSameData(ConfigurationFile Other)
         {
-            if (dictSections.Count != Other.dictSections.Count || dictTables.Count != Other.dictTables.Count) {
+            if (dictSections.Count != Other.dictSections.Count || dictTables.Count != Other.dictTables.Count || dictLists.Count != Other.dictLists.Count) {
                 return false;
             }
             foreach (KeyValuePair<string, strDictionary> SecName in dictSections) {
@@ -267,6 +283,17 @@ namespace ConfigurationFilesReader
                 }
                 for (int Index = 0; Index < Rows.Count; Index++) {
                     if (Table.Value[Index] != Rows[Index]) {
+                        return false;
+                    }
+                }
+            }
+            foreach (KeyValuePair<string, List<string>> List in dictLists) {
+                List<string> Items;
+                if (!Other.dictLists.TryGetValue(List.Key, out Items) || List.Value.Count != Items.Count) {
+                    return false;
+                }
+                for (int Index = 0; Index < Items.Count; Index++) {
+                    if (List.Value[Index] != Items[Index]) {
                         return false;
                     }
                 }
@@ -452,6 +479,24 @@ namespace ConfigurationFilesReader
             List<string> Names = new List<string>(dictTables.Keys);
             Names.Sort(StringComparer.Ordinal);
             return Names;
+        }
+
+        // Return a sorted snapshot of list names, excluding sections and tables.
+        public List<string> listLists()
+        {
+            List<string> Names = new List<string>(dictLists.Keys);
+            Names.Sort(StringComparer.Ordinal);
+            return Names;
+        }
+
+        // Return the live list, or an unattached empty list when missing.
+        public List<string> getList(string ListName)
+        {
+            if (ListName == null) {
+                throw new ArgumentNullException("ListName");
+            }
+            List<string> Items;
+            return dictLists.TryGetValue(ListName, out Items) ? Items : new List<string>();
         }
 
         // Get a table by name.

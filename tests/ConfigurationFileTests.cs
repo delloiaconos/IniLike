@@ -747,8 +747,67 @@ class ConfigurationFileTests
             equal(true, Stream.CanWrite);
     }
 
+    static void listBlocks()
+    {
+        string[] Bodies = {
+            "mach1; \npil1;\nacq2;\n",
+            "x1=mach1.volt1\nx2=mach1.current1\nx3=acq2.sensor1\nx4=acq2.sensor3\nx5=pil1.duty\n"
+        };
+        string[] Expected = {
+            "mach1|pil1|acq2",
+            "x1=mach1.volt1|x2=mach1.current1|x3=acq2.sensor1|x4=acq2.sensor3|x5=pil1.duty"
+        };
+        foreach (string Keyword in new string[] { "LIST", "LST" }) {
+            foreach (string End in new string[] { "", "[END]", "[END: ITEMS ]" }) {
+                for (int Index = 0; Index < Bodies.Length; Index++) {
+                    string Text = "[" + Keyword + ": ITEMS ]\n" + Bodies[Index];
+                    if (End.Length > 0) Text += End + "\noutside=ignored\n";
+                    ConfigurationFile Config = load(Text);
+                    equal(Expected[Index], String.Join("|", Config.getList("ITEMS").ToArray()));
+                    equal("ITEMS", String.Join("|", Config.listLists().ToArray()));
+                    equal(0, Config.listSections().Count);
+                    equal(0, Config.listParameters().Count);
+                    equal(0, Config.listTables().Count);
+                    Config.save("lists.ini");
+                    equal(Expected[Index], String.Join("|", new ConfigurationFile("lists.ini").getList("ITEMS").ToArray()));
+                    equal(true, File.ReadAllText("lists.ini").StartsWith("[LIST:ITEMS]"));
+                }
+            }
+        }
+        ConfigurationFile Mixed = load("[LST:SHARED]\n## ignored\n\nsame;\nsame;\nx=a=b;\n.;\n[SEC:SHARED]\nk=v\n[TBL:SHARED]\nrow\n[LST:EMPTY]\n[END:EMPTY]\n[LIST:shared]\nlast\n[END]\n[SECTION:AFTER]\nk=end\n");
+        equal("same|same|x=a=b|", String.Join("|", Mixed.getList("SHARED").ToArray()));
+        equal("v", get(Mixed, "SHARED", "k"));
+        equal("row", Mixed.getTable("SHARED")[0]);
+        equal("end", get(Mixed, "AFTER", "k"));
+        equal("EMPTY|SHARED|shared", String.Join("|", Mixed.listLists().ToArray()));
+        List<string> Names = Mixed.listLists();
+        Names.Clear();
+        equal(3, Mixed.listLists().Count);
+        equal(0, Mixed.getList("missing").Count);
+        Mixed.getList("missing").Add("detached");
+        equal(0, Mixed.getList("missing").Count);
+        List<string> Items = Mixed.getList("EMPTY");
+        Items.Add("added=value");
+        equal(true, Object.ReferenceEquals(Items, Mixed.getList("EMPTY")));
+        Mixed.save("mixed.ini");
+        equal("added=value", new ConfigurationFile("mixed.ini").getList("EMPTY")[0]);
+        string Saved = File.ReadAllText("mixed.ini");
+        Items.Add("## not representable");
+        throws<InvalidOperationException>(delegate { Mixed.save("mixed.ini"); });
+        equal(Saved, File.ReadAllText("mixed.ini"));
+        throws<ArgumentNullException>(delegate { Mixed.getList(null); });
+        throws<ArgumentException>(delegate { load("[LIST:A]\n[END]\n[LST:A]\n"); });
+        throws<FormatException>(delegate { load("[LST:A]\n[END:a]\n"); });
+        using (FileStream Stream = File.Open("config.ini", FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            equal(true, Stream.CanWrite);
+        ConfigurationFile Empty = new ConfigurationFile();
+        equal(0, Empty.listLists().Count);
+        equal(0, Empty.getList("missing").Count);
+    }
+
     static int Main()
     {
+        test("LIST and LST preserve raw ordered items and round-trip with other blocks", listBlocks);
         test("SEC and SECTION headers support optional named and unnamed END", sectionBlocks);
         test("TABLE and TBL blocks support optional named and unnamed END", tableBlocks);
         test("comment recognition uses configured prefixes", configuredComments);
