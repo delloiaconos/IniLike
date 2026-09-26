@@ -47,56 +47,57 @@ namespace ConfigurationFilesReader
         {
             if (File.Exists(FileName))
             {
-                StreamReader srFile = new StreamReader(FileName);
-
-                string currentParent = "";
-                SectionType reading = SectionType.None;
-
-
-                while (!srFile.EndOfStream)
+                using (StreamReader srFile = new StreamReader(FileName))
                 {
-                    string currentLine = srFile.ReadLine();
-                    currentLine = currentLine.Trim();
 
-                    if (currentLine.StartsWith("[TABLE:") && currentLine.EndsWith("]"))
+                    string currentParent = "";
+                    SectionType reading = SectionType.None;
+
+
+                    while (!srFile.EndOfStream)
                     {
-                        //Ho trovato una TABLE
-                        currentParent = currentLine.Substring(7, currentLine.Length - 1 - 7).Trim();
-                        reading = SectionType.Table;
-                        //Creo la table...
-                        dictTables.Add(currentParent, new strTable());
-                    }
-                    else if (currentLine.StartsWith("[") && currentLine.EndsWith("]"))
-                    {
-                        // Ho trovato una sezione
-                        currentParent = currentLine.Substring(1, currentLine.Length - 1 - 1).Trim();
-                        reading = SectionType.Section;
-                        // Creo la sezione
-                        dictSections.Add(currentParent, new strDictionary());
-                    }
-                    else if (currentLine.Length > 0 && currentLine.StartsWith("##"))
-                    {
-                        // Ho trovato un commento tra le righe....
-                    }
-                    else if (reading == SectionType.Section && currentLine.Length > 0)
-                    {
-                        // Aggiungo il parametro
-                        string[] sline = currentLine.Split(parSeparator);
-                        if (sline.Count() == 2)
+                        string currentLine = srFile.ReadLine();
+                        currentLine = currentLine.Trim();
+
+                        if (currentLine.StartsWith("[TABLE:") && currentLine.EndsWith("]"))
                         {
-                            sline[1] = sline[1].Trim().TrimEnd(parEndLineDelimiter);
-                            dictSections[currentParent].Add(sline[0].Trim(), sline[1]);
+                            //Ho trovato una TABLE
+                            currentParent = currentLine.Substring(7, currentLine.Length - 1 - 7).Trim();
+                            reading = SectionType.Table;
+                            //Creo la table...
+                            dictTables.Add(currentParent, new strTable());
                         }
-                    }
-                    else if (reading == SectionType.Table && currentLine.Length > 0)
-                    {
-                        // Aggiungo il parametro
-                        currentLine = currentLine.Trim().TrimEnd(parEndLineDelimiter);
-                        dictTables[currentParent].Add(currentLine);
-                    }
+                        else if (currentLine.StartsWith("[") && currentLine.EndsWith("]"))
+                        {
+                            // Ho trovato una sezione
+                            currentParent = currentLine.Substring(1, currentLine.Length - 1 - 1).Trim();
+                            reading = SectionType.Section;
+                            // Creo la sezione
+                            dictSections.Add(currentParent, new strDictionary());
+                        }
+                        else if (currentLine.Length > 0 && currentLine.StartsWith("##"))
+                        {
+                            // Ho trovato un commento tra le righe....
+                        }
+                        else if (reading == SectionType.Section && currentLine.Length > 0)
+                        {
+                            // Aggiungo il parametro
+                            string[] sline = currentLine.Split(parSeparator);
+                            if (sline.Count() == 2)
+                            {
+                                sline[1] = sline[1].Trim().TrimEnd(parEndLineDelimiter);
+                                dictSections[currentParent].Add(sline[0].Trim(), sline[1]);
+                            }
+                        }
+                        else if (reading == SectionType.Table && currentLine.Length > 0)
+                        {
+                            // Aggiungo il parametro
+                            currentLine = currentLine.Trim().TrimEnd(parEndLineDelimiter);
+                            dictTables[currentParent].Add(currentLine);
+                        }
 
+                    }
                 }
-                srFile.Close();
                 return true;
             }
             else
@@ -110,10 +111,11 @@ namespace ConfigurationFilesReader
 
         private void addSection( string SectionName )
         {
-            StreamWriter swFile = new StreamWriter(SectionName, true);
-            swFile.WriteLine();
-            swFile.WriteLine("[" + SectionName + "]");
-            swFile.Close();
+            using (StreamWriter swFile = new StreamWriter(SectionName, true))
+            {
+                swFile.WriteLine();
+                swFile.WriteLine("[" + SectionName + "]");
+            }
         }
 
         public bool checkSection(string SectionName)

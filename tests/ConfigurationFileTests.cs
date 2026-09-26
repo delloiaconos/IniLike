@@ -53,11 +53,29 @@ class ConfigurationFileTests
         finally
         {
             Environment.CurrentDirectory = original;
-            // The legacy parser can retain readers after a parsing exception.
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
             Directory.Delete(folder, true);
         }
+    }
+
+    static void FileHandles()
+    {
+        ConfigurationFile cfg = Load("[S]\nk=value\n");
+        using (FileStream file = File.Open("config.ini", FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            Equal(true, file.CanWrite);
+
+        foreach (string source in new string[] {
+            "[S]\nk=1\nk=2\n", "[S]\n[S]\n", "[TABLE:T]\na\n[TABLE:T]\n" })
+        {
+            Throws<ArgumentException>(delegate { Load(source); });
+            // Reopening exclusively must work immediately, without forcing GC.
+            using (FileStream file = File.Open("config.ini", FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                Equal(true, file.CanWrite);
+        }
+
+        cfg.UpdateFile = true;
+        Equal(false, cfg.checkSection("side-effect"));
+        using (FileStream file = File.Open("side-effect", FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            Equal(true, file.CanWrite);
     }
 
     static void Defaults()
@@ -247,6 +265,7 @@ class ConfigurationFileTests
 
     static int Main()
     {
+        Test("file handles released after loading, parsing errors and section writes", FileHandles);
         Test("empty container and all default overloads", Defaults);
         Test("sections, whitespace, delimiters, Unicode and literal values", Parsing);
         Test("tables, transitions, case sensitivity and mutable lists", Tables);

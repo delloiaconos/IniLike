@@ -104,9 +104,8 @@ configuration file or add the section to the in-memory dictionary.
 `addParameter` does nothing. Keep `UpdateFile=false` and use `SetParameter`
 for in-memory changes.
 
-The file reader is not protected by `using` or `finally`. Parsing errors may
-leave the file open until garbage collection. Concurrent changes are not
-synchronized.
+File readers and writers are disposed through `using` blocks, including when
+parsing or writing throws an exception. Concurrent changes are not synchronized.
 
 ## Build
 
