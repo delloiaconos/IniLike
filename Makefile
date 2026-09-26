@@ -8,7 +8,7 @@ ifneq ($(origin MSBUILD),file)
 TEST_BUILD_ARGS = --msbuild "$(MSBUILD)"
 endif
 
-.PHONY: x-build ms-build clean test
+.PHONY: x-build ms-build clean test test-examples
 
 ms-build:
 	"$(MSBUILD)" IniLike.sln /target:Build /p:Configuration=$(CONFIGURATION)
@@ -21,3 +21,6 @@ clean:
 
 test:
 	$(PYTHON) tests/run.py --configuration $(CONFIGURATION) $(TEST_BUILD_ARGS) --xbuild "$(XBUILD)"
+
+test-examples:
+	$(PYTHON) tests/run.py --examples-only --configuration $(CONFIGURATION) $(TEST_BUILD_ARGS) --xbuild "$(XBUILD)"

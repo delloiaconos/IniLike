@@ -14,6 +14,8 @@ def main():
     parser.add_argument("--msbuild", help="Explicit build executable; otherwise prefer msbuild, then xbuild")
     parser.add_argument("--xbuild", default="xbuild", help="Fallback xbuild executable (default: xbuild)")
     parser.add_argument("--operator-ui", type=Path, help="Optional OperatorUI assembly for CompatibilityProbe")
+    parser.add_argument("--examples-only", action="store_true",
+                        help="Build and validate all examples/*.ini with ConfigurationValidator")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     if args.msbuild:
@@ -27,7 +29,7 @@ def main():
             if not build_tool:
                 parser.error("Missing build tool: install msbuild or xbuild, or specify --msbuild /path/to/executable")
             print("MSBuild is unavailable; using deprecated xbuild: " + build_tool, flush=True)
-    for tool in ("mcs", "mono"):
+    for tool in (("mono",) if args.examples_only else ("mcs", "mono")):
         if not shutil.which(tool):
             parser.error("Missing prerequisite: " + tool)
     msbuild = Path(build_tool).resolve()
@@ -46,6 +48,21 @@ def main():
                  "/p:Configuration=" + args.configuration,
                  "/p:OutputPath=" + str(build) + "/",
                  "/p:IntermediateOutputPath=" + str(build / "obj") + "/"], build)
+            if args.examples_only:
+                examples = sorted((root / "examples").glob("*.ini"))
+                examples = [path for path in examples if path.is_file()]
+                if not examples:
+                    print("FAIL: No .ini files found in examples.", file=sys.stderr)
+                    return 1
+                failed = 0
+                for example in examples:
+                    try:
+                        run(["mono", build / "ConfigurationValidator.exe", example], build)
+                    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+                        print("FAIL: {0}: {1}".format(example.name, error), file=sys.stderr)
+                        failed += 1
+                print("Examples: {0} passed, {1} failed.".format(len(examples) - failed, failed), flush=True)
+                return 1 if failed else 0
             library = build / "ConfigurationFilesReader.dll"
             sources = ["ConfigurationFileTests"]
             if operator_ui:

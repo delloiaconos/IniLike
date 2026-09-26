@@ -312,6 +312,18 @@ Concurrent changes are not synchronized.
 
 ## Console validation
 
+Validate every `.ini` file directly inside `examples/` with one command:
+
+```sh
+make test-examples
+```
+
+This target builds the validator in a temporary directory, checks every example
+even if another fails, and returns a nonzero status if any file fails (or none
+are found). It does not modify the examples. Like `make test`, it supports
+`CONFIGURATION`, `PYTHON`, `MSBUILD` and `XBUILD` and prefers MSBuild with xbuild
+fallback. It runs only the example checks, not the full regression suite.
+
 `ConfigurationValidator` loads a file through `ConfigurationFile` and reports
 whether the library accepts it. Build the solution with `make ms-build` (or
 `make x-build` when only legacy xbuild is installed), then run:
