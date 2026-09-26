@@ -48,8 +48,18 @@ class CompatibilityProbe
                 object empty=Activator.CreateInstance(type);
                 type.GetField("UpdateFile").SetValue(empty,true);
                 Get(empty,"unexpected-section-file","missing");
-                Require(File.Exists("unexpected-section-file"),"legacy UpdateFile side effect changed");
-                File.Delete("unexpected-section-file");
+                if(type==ini)
+                    Require(!File.Exists("unexpected-section-file"),"IniLike getters must not write files");
+                else if(File.Exists("unexpected-section-file"))
+                {
+                    Console.WriteLine("NOTE: OperatorUI retains the legacy UpdateFile write side effect; IniLike does not.");
+                    File.Delete("unexpected-section-file");
+                }
+                Require(!(bool)Call(empty,"checkSection",new[]{typeof(string)},"unexpected-section-file"),"missing section must remain absent");
+                if(type==ini)
+                    Require(!File.Exists("unexpected-section-file"),"IniLike section checks must not write files");
+                else if(File.Exists("unexpected-section-file"))
+                    File.Delete("unexpected-section-file");
                 string duplicate=Path.Combine(folder,"duplicate-"+type.Assembly.GetName().Name+".ini");File.WriteAllText(duplicate,"[S]\nk=1;\nk=2;\n");
                 try{Activator.CreateInstance(type,new object[]{duplicate});throw new Exception("Duplicate accepted");}
                 catch(TargetInvocationException ex){Require(ex.InnerException is ArgumentException,"unexpected duplicate error");}

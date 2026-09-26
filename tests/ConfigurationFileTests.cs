@@ -59,7 +59,7 @@ class ConfigurationFileTests
 
     static void FileHandles()
     {
-        ConfigurationFile cfg = Load("[S]\nk=value\n");
+        Load("[S]\nk=value\n");
         using (FileStream file = File.Open("config.ini", FileMode.Open, FileAccess.ReadWrite, FileShare.None))
             Equal(true, file.CanWrite);
 
@@ -72,10 +72,6 @@ class ConfigurationFileTests
                 Equal(true, file.CanWrite);
         }
 
-        cfg.UpdateFile = true;
-        Equal(false, cfg.checkSection("side-effect"));
-        using (FileStream file = File.Open("side-effect", FileMode.Open, FileAccess.ReadWrite, FileShare.None))
-            Equal(true, file.CanWrite);
     }
 
     static void Defaults()
@@ -239,7 +235,7 @@ class ConfigurationFileTests
         Equal<string>(null, Get(cfg, "S", "null"));
     }
 
-    static void LegacyWrites()
+    static void ReadOnlySectionChecks()
     {
         const string source = "[S]\nk=original;\n";
         ConfigurationFile cfg = Load(source);
@@ -252,27 +248,33 @@ class ConfigurationFileTests
             Equal("original", Get(cfg, "S", "k"));
             Equal("fallback", Get(cfg, "S", "new"));
             Equal(false, File.Exists("absent"));
+            for (int i = 0; i < 2; i++)
+            {
+                Equal(true, cfg.checkSection("S"));
+                Equal(false, cfg.checkSection("absent"));
+                Equal("fallback", Get(cfg, "absent", "k"));
+                Equal(false, cfg.checkSection("absent"));
+                Equal(false, File.Exists("absent"));
+                // A section name matching a file must not append to that file.
+                Equal(false, cfg.checkSection("config.ini"));
+                Equal("fallback", Get(cfg, "config.ini", "k"));
+                Equal(source, File.ReadAllText("config.ini"));
+                Equal(1, Directory.GetFiles(".").Length);
+            }
         }
-        Equal(false, cfg.checkSection("side-effect"));
-        string entry = Environment.NewLine + "[side-effect]" + Environment.NewLine;
-        Equal(entry, File.ReadAllText("side-effect"));
-        Equal("fallback", Get(cfg, "side-effect", "k"));
-        Equal(entry + entry, File.ReadAllText("side-effect"));
-        cfg.UpdateFile = false;
-        Equal(false, cfg.checkSection("side-effect"));
         Equal(source, File.ReadAllText("config.ini"));
     }
 
     static int Main()
     {
-        Test("file handles released after loading, parsing errors and section writes", FileHandles);
+        Test("file handles released after loading and parsing errors", FileHandles);
         Test("empty container and all default overloads", Defaults);
         Test("sections, whitespace, delimiters, Unicode and literal values", Parsing);
         Test("tables, transitions, case sensitivity and mutable lists", Tables);
         Test("numeric conversions, boundaries and three cultures", Numbers);
         Test("boolean conversions", Booleans);
         Test("runtime overrides and file immutability", Overrides);
-        Test("legacy addParameter and UpdateFile behavior", LegacyWrites);
+        Test("section checks and getters never create sections or write files", ReadOnlySectionChecks);
         Test("empty file", delegate { Equal(false, Load("").checkSection("S")); });
         Test("comments only", delegate { Equal(0, Load(" ## comment\n\n").getTable("S").Count); });
         Test("missing file", delegate { Throws<Exception>(delegate { new ConfigurationFile("missing.ini"); }); });

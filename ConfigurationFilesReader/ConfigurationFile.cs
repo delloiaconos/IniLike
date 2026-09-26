@@ -109,29 +109,9 @@ namespace ConfigurationFilesReader
 
         
 
-        private void addSection( string SectionName )
-        {
-            using (StreamWriter swFile = new StreamWriter(SectionName, true))
-            {
-                swFile.WriteLine();
-                swFile.WriteLine("[" + SectionName + "]");
-            }
-        }
-
         public bool checkSection(string SectionName)
         {
-            if (!dictSections.ContainsKey(SectionName))
-            {
-                if (UpdateFile == true)
-                {
-                    addSection(SectionName);
-                }
-                return false;
-            }
-            else
-            {
-                return true;
-            }
+            return dictSections.ContainsKey(SectionName);
         }
 
         // Runtime override only: the source INI is never written.
