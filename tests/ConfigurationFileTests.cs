@@ -554,8 +554,45 @@ class ConfigurationFileTests
         equal(1, Directory.GetFiles(".").Length);
     }
 
+    static void registryDump()
+    {
+        ConfigurationFile Config = loadForUpdates("[Z]\nb=2\na=caffè 日本\n[A]\n[TABLE:T]\nfirst;row\nsecond\n");
+        Config.addParameter("Z", "c", "3");
+        string Expected = String.Join(Environment.NewLine, new string[] {
+            "[A]", "[Z]", "a=caffè 日本;", "b=2;", "c=3;",
+            "[TABLE:T]", "first;row;", "second;", "" });
+        Stream OwnedStream;
+        using (StreamWriter Writer = Config.dump()) {
+            OwnedStream = Writer.BaseStream;
+            equal(0L, OwnedStream.Position);
+            equal(true, OwnedStream.CanRead);
+            byte[] Bytes = ((MemoryStream)OwnedStream).ToArray();
+            equal(Expected, System.Text.Encoding.UTF8.GetString(Bytes));
+            equal((byte)'[', Bytes[0]);
+        }
+        equal(false, OwnedStream.CanRead);
+        equal(1, Directory.GetFiles(".").Length);
+        Config.save("dump.ini");
+        equal(Expected, File.ReadAllText("dump.ini"));
+        using (MemoryStream Stream = new MemoryStream())
+        using (StreamWriter Writer = new StreamWriter(Stream, new System.Text.UTF8Encoding(false))) {
+            Writer.Write("prefix");
+            Config.dump(Writer);
+            equal("prefix" + Expected, System.Text.Encoding.UTF8.GetString(Stream.ToArray()));
+            Writer.Write("suffix");
+            Writer.Flush();
+            equal("prefix" + Expected + "suffix", System.Text.Encoding.UTF8.GetString(Stream.ToArray()));
+        }
+        using (StreamWriter Writer = new ConfigurationFile().dump()) {
+            equal(0L, Writer.BaseStream.Length);
+            equal(0L, Writer.BaseStream.Position);
+        }
+        throws<ArgumentNullException>(delegate { Config.dump(null); });
+    }
+
     static int Main()
     {
+        test("registry dump shares save serialization and respects stream ownership", registryDump);
         test("registry creation can be enabled and disabled at runtime", toggleRegistryUpdates);
         test("automatic registry creation respects the property", automaticRegistryUpdates);
         test("save overloads preserve sections, tables and original destination", saving);

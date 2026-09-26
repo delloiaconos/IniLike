@@ -104,6 +104,41 @@ namespace ConfigurationFilesReader
             
         }
 
+        // Return a flushed UTF-8 dump positioned for reading. The caller owns it.
+        public StreamWriter dump()
+        {
+            StreamWriter Writer = new StreamWriter(new MemoryStream(), new UTF8Encoding(false, true));
+            try {
+                dump(Writer);
+                Writer.BaseStream.Position = 0;
+                return Writer;
+            } catch {
+                Writer.Dispose();
+                throw;
+            }
+        }
+
+        // Write at the current position without closing the caller's writer.
+        public void dump(StreamWriter Writer)
+        {
+            if (Writer == null) {
+                throw new ArgumentNullException("Writer");
+            }
+            foreach (string Section in listSections()) {
+                Writer.WriteLine("[" + Section + "]");
+                foreach (string Parameter in listParameters(Section)) {
+                    Writer.WriteLine(Parameter + "=" + dictSections[Section][Parameter] + ";");
+                }
+            }
+            foreach (string Table in listTables()) {
+                Writer.WriteLine("[TABLE:" + Table + "]");
+                foreach (string Row in dictTables[Table]) {
+                    Writer.WriteLine(Row + ";");
+                }
+            }
+            Writer.Flush();
+        }
+
         // Save to the original source file without changing its identity.
         public void save()
         {
@@ -145,18 +180,11 @@ namespace ConfigurationFilesReader
                 // Create beside the destination so replacement stays on the same filesystem.
                 using (FileStream Stream = new FileStream(TemporaryPath, FileMode.CreateNew, FileAccess.Write)) {
                     TemporaryCreated = true;
-                    using (StreamWriter Writer = new StreamWriter(Stream, new UTF8Encoding(false, true))) {
-                        foreach (string Section in listSections()) {
-                            Writer.WriteLine("[" + Section + "]");
-                            foreach (string Parameter in listParameters(Section)) {
-                                Writer.WriteLine(Parameter + "=" + dictSections[Section][Parameter] + ";");
-                            }
-                        }
-                        foreach (string Table in listTables()) {
-                            Writer.WriteLine("[TABLE:" + Table + "]");
-                            foreach (string Row in dictTables[Table]) {
-                                Writer.WriteLine(Row + ";");
-                            }
+                    using (StreamWriter Dump = dump()) {
+                        byte[] Buffer = new byte[8192];
+                        int Count;
+                        while ((Count = Dump.BaseStream.Read(Buffer, 0, Buffer.Length)) > 0) {
+                            Stream.Write(Buffer, 0, Count);
                         }
                     }
                 }

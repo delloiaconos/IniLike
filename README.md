@@ -98,6 +98,8 @@ classDiagram
         +listParameters(string Section) List~string~
         +listParameters() List~string~
         +listTables() List~string~
+        +dump() StreamWriter
+        +dump(StreamWriter Writer) void
         +save() void
         +save(string FileName) void
         +save(FileInfo Path, string FileName) void
@@ -134,6 +136,8 @@ Relative paths are resolved against the working directory when their path object
 | `listParameters(string Section)` | Returns parameter names in the specified section. Missing or empty sections return an empty list; null throws `ArgumentNullException`. |
 | `listParameters()` | Returns distinct parameter names across all sections. The same name in multiple sections appears once; names differing in case remain distinct. |
 | `listTables()` | Returns table names, excluding sections. |
+| `dump()` | Returns a flushed UTF-8 `StreamWriter` backed by a memory stream, positioned at zero for reading. The caller must dispose it. |
+| `dump(StreamWriter Writer)` | Writes and flushes the registry at the supplied writer's current position without closing it. Null throws `ArgumentNullException`. |
 | `save()` | Saves to the original file. Throws `InvalidOperationException` if constructed without a file. |
 | `save(string FileName)` | Saves to the specified path, relative to the current working directory if not rooted. |
 | `save(FileInfo Path, string FileName)` | Treats `Path.FullName` as a base directory and combines it with `FileName` using `System.IO.Path.Combine`. A rooted filename overrides the base directory. |
@@ -143,6 +147,22 @@ Relative paths are resolved against the working directory when their path object
 
 
 ### Saving
+
+`dump()` serializes the registry without writing a file:
+
+```csharp
+using (var dump = config.dump())
+using (var reader = new System.IO.StreamReader(dump.BaseStream))
+{
+    string text = reader.ReadToEnd();
+}
+```
+
+The returned writer owns its memory stream. Alternatively, `dump(writer)` writes
+to a caller-owned `StreamWriter`, preserving its encoding and newline settings.
+Dumping uses the same sorted sections, parameters and ordered table rows as saving.
+It emits raw registry content without checking whether the parser can reload it;
+`save` performs that validation before replacing the destination.
 
 ```csharp
 config.setParameter("SERVER", "host", "example.com");
@@ -162,7 +182,8 @@ and the current order of table rows. Comments, source ordering and original
 formatting are not preserved. Saving uses the standard `=` separator and `;`
 terminator regardless of mutations to the public delimiter arrays.
 
-The writer closes a temporary file in the destination directory, reloads it with
+`save` obtains the serialized bytes from `dump()`, copies them to a temporary file
+in the destination directory, closes that file, and reloads it with
 the standard parser and checks that all names and values are preserved. Data the
 format cannot represent (for example null values, values containing `=`, or
 significant trailing punctuation) causes `InvalidOperationException` rather than
