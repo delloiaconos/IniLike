@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the real library and run isolated regression tests (Python 3 + Mono)."""
+"""Build with MSBuild and run isolated regression tests (Python 3 + Mono)."""
 import argparse
 from pathlib import Path
 import shutil
@@ -11,12 +11,14 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--configuration", choices=("Debug", "Release"), default="Release")
+    parser.add_argument("--msbuild", default="msbuild", help="MSBuild executable name or path (default: msbuild)")
     parser.add_argument("--operator-ui", type=Path, help="Optional OperatorUI assembly for CompatibilityProbe")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    for tool in ("xbuild", "mcs", "mono"):
+    for tool in (args.msbuild, "mcs", "mono"):
         if not shutil.which(tool):
             parser.error("Missing prerequisite: " + tool)
+    msbuild = Path(shutil.which(args.msbuild)).resolve()
     operator_ui = args.operator_ui.resolve() if args.operator_ui else None
     if operator_ui and not operator_ui.is_file():
         parser.error("OperatorUI assembly does not exist: " + str(operator_ui))
@@ -28,7 +30,7 @@ def main():
     try:
         with tempfile.TemporaryDirectory(prefix="inilike-tests-") as temp:
             build = Path(temp)
-            run(["xbuild", root / "IniLike.sln", "/verbosity:minimal",
+            run([msbuild, root / "IniLike.sln", "/verbosity:minimal",
                  "/p:Configuration=" + args.configuration,
                  "/p:OutputPath=" + str(build) + "/",
                  "/p:IntermediateOutputPath=" + str(build / "obj") + "/"], build)
