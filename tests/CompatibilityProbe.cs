@@ -20,9 +20,18 @@ class CompatibilityProbe
     static List<string> table(object instance,string table)
     {return (List<string>)call(instance,"getTable",new[]{typeof(string)},table);}
     static void require(bool condition,string message){if(!condition)throw new Exception(message);}
+    // Enable registry creation on current versions; older consumers create entries by default.
+    static object createForUpdates(Type type, string path)
+    {
+        Type[] signature=path==null ? new[]{typeof(bool)} : new[]{typeof(string),typeof(bool)};
+        ConstructorInfo constructor=type.GetConstructor(signature);
+        if(constructor!=null)
+            return constructor.Invoke(path==null ? new object[]{true} : new object[]{path,true});
+        return path==null ? Activator.CreateInstance(type) : Activator.CreateInstance(type,new object[]{path});
+    }
     static string snapshot(Type type,string path,bool requireMemoryAdd)
     {
-        object cfg=Activator.CreateInstance(type,new object[]{path});
+        object cfg=createForUpdates(type,path);
         require(get(cfg,"DATA","name")=="test","section parsing");
         require(get(cfg,"DATA","equals")=="fallback","multiple equals must be ignored by current parser");
         require(get(cfg,"data","name")=="fallback","case sensitivity");
@@ -73,7 +82,7 @@ class CompatibilityProbe
             foreach(Type type in new[]{ini,ui})
             {
                 require(type.GetMethod("setParameter",setter)!=null||type.GetMethod("SetParameter",setter)!=null,"setParameter missing");
-                object current=Activator.CreateInstance(type,new object[]{input});
+                object current=createForUpdates(type,input);
                 call(current,"setParameter",setter,"DATA","name","override");
                 call(current,"setParameter",setter,"DATA","added","123");
                 call(current,"setParameter",setter,"NEW","key","created");
@@ -84,7 +93,7 @@ class CompatibilityProbe
                 require(get(current,"data","name")=="fallback","setter section case sensitivity");
                 require(get(current,"DATA","Name")=="fallback","setter key case sensitivity");
                 require(File.ReadAllText(input)==text,"INI file changed");
-                object empty=Activator.CreateInstance(type);
+                object empty=createForUpdates(type,null);
 
                 call(empty,"setParameter",setter,"runtime-section","key","value");
                 require((bool)call(empty,"checkSection",new[]{typeof(string)},"runtime-section"),"setter creates section");

@@ -18,19 +18,29 @@ namespace ConfigurationFilesReader
 
         public readonly char[] parSeparator = { '=' };
         public readonly char[] parEndLineDelimiter = { ';', ',', '.' };
-        public readonly bool autoUpdateFile = false;
+        public readonly bool autoUpdateRegistry = false;
 
         private readonly FileInfo FilePath;
         private Dictionary<string, strDictionary> dictSections;
         private Dictionary<string, strTable> dictTables;
         
         public ConfigurationFile(string FileName)
-            : this(new FileInfo(FileName))
+            : this(FileName, false)
+        {
+        }
+
+        public ConfigurationFile(string FileName, bool AutoUpdateRegistry)
+            : this(new FileInfo(FileName), AutoUpdateRegistry)
         {
         }
 
         public ConfigurationFile(FileInfo FilePath)
-            : this()
+            : this(FilePath, false)
+        {
+        }
+
+        public ConfigurationFile(FileInfo FilePath, bool AutoUpdateRegistry)
+            : this(AutoUpdateRegistry)
         {
             if (FilePath == null) {
                 throw new ArgumentNullException("FilePath");
@@ -42,12 +52,23 @@ namespace ConfigurationFilesReader
         }
 
         public ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)
-            : this(combinePath(BaseDirectory, FileName))
+            : this(BaseDirectory, FileName, false)
+        {
+        }
+
+        public ConfigurationFile(DirectoryInfo BaseDirectory, string FileName, bool AutoUpdateRegistry)
+            : this(combinePath(BaseDirectory, FileName), AutoUpdateRegistry)
         {
         }
 
         public ConfigurationFile()
+            : this(false)
         {
+        }
+
+        public ConfigurationFile(bool AutoUpdateRegistry)
+        {
+            autoUpdateRegistry = AutoUpdateRegistry;
             dictSections = new Dictionary<string, strDictionary>();
             dictTables = new Dictionary<string, strTable>();
         }
@@ -220,12 +241,21 @@ namespace ConfigurationFilesReader
             return dictSections.ContainsKey(SectionName);
         }
 
-        // Set a parameter in memory only.
+        // Update existing values; create missing entries only when enabled.
         public void setParameter(string sectionName, string parameterName, string value)
         {
-            if (!dictSections.ContainsKey(sectionName))
-                dictSections.Add(sectionName, new strDictionary());
-            dictSections[sectionName][parameterName] = value;
+            if (sectionName == null) {
+                throw new ArgumentNullException("sectionName");
+            }
+            if (parameterName == null) {
+                throw new ArgumentNullException("parameterName");
+            }
+            strDictionary Parameters;
+            if (dictSections.TryGetValue(sectionName, out Parameters) && Parameters.ContainsKey(parameterName)) {
+                Parameters[parameterName] = value;
+            } else if (autoUpdateRegistry) {
+                addParameter(sectionName, parameterName, value);
+            }
         }
 
         // Add a default parameter in memory without replacing an existing value.
@@ -236,6 +266,10 @@ namespace ConfigurationFilesReader
             }
             if (ParameterName == null) {
                 throw new ArgumentNullException("ParameterName");
+            }
+
+            if (!autoUpdateRegistry) {
+                return;
             }
 
             strDictionary parameters;
@@ -256,13 +290,13 @@ namespace ConfigurationFilesReader
                 if (sectParameters.ContainsKey(ParameterName)) {
                     return sectParameters[ParameterName];
                 } else {
-                    if (autoUpdateFile) {
+                    if (autoUpdateRegistry) {
                         addParameter(SectionName, ParameterName, DefaultValue);
                     }
                     return DefaultValue;
                 }
             } else {
-                if (autoUpdateFile) {
+                if (autoUpdateRegistry) {
                     addParameter(SectionName, ParameterName, DefaultValue);
                 }
                 return DefaultValue;

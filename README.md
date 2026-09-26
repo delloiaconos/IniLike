@@ -54,7 +54,7 @@ Reference `ConfigurationFilesReader.dll` and use the public API:
 using ConfigurationFilesReader;
 using System.Collections.Generic;
 
-var config = new ConfigurationFile("config.ini");
+var config = new ConfigurationFile("config.ini", true);
 string host = config.getParameter("SERVER", "host", "localhost");
 int port = config.getParameter("SERVER", "port", 8080);
 bool enabled = config.getParameter("SERVER", "enabled", false);
@@ -67,7 +67,7 @@ config.setParameter("DIRECTORIES", "data", "./other-data/");
 To create a configuration entirely in memory:
 
 ```csharp
-var config = new ConfigurationFile();
+var config = new ConfigurationFile(true);
 config.setParameter("SERVER", "port", "8080");
 int port = config.getParameter("SERVER", "port", 80);
 ```
@@ -79,10 +79,14 @@ classDiagram
     class ConfigurationFile {
         +char[] parSeparator
         +char[] parEndLineDelimiter
-        +bool autoUpdateFile
+        +bool autoUpdateRegistry
+        +ConfigurationFile(bool AutoUpdateRegistry)
         +ConfigurationFile()
+        +ConfigurationFile(string FileName, bool AutoUpdateRegistry)
         +ConfigurationFile(string FileName)
+        +ConfigurationFile(FileInfo FilePath, bool AutoUpdateRegistry)
         +ConfigurationFile(FileInfo FilePath)
+        +ConfigurationFile(DirectoryInfo BaseDirectory, string FileName, bool AutoUpdateRegistry)
         +ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)
         +checkSection(string SectionName) bool
         +setParameter(string SectionName, string ParameterName, string Value) void
@@ -123,9 +127,13 @@ Relative paths are resolved against the working directory when their path object
 | `ConfigurationFile(string filename)` | Loads the file immediately. Missing files and parsing errors cause exceptions. |
 | `ConfigurationFile(FileInfo FilePath)` | Loads the file represented by the typed path immediately. |
 | `ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)` | Combines the directory and filename and loads the resulting file immediately. |
-| `ConfigurationFile()` | Creates an empty container without loading a file. |
+| `ConfigurationFile()` | Creates an empty container without loading a file; automatic creation is disabled. |
+| `ConfigurationFile(bool AutoUpdateRegistry)` | Creates an empty container with the selected automatic-creation mode. |
+| `ConfigurationFile(string FileName, bool AutoUpdateRegistry)` | Loads a file and selects automatic creation. |
+| `ConfigurationFile(FileInfo FilePath, bool AutoUpdateRegistry)` | Loads a typed path and selects automatic creation. |
+| `ConfigurationFile(DirectoryInfo BaseDirectory, string FileName, bool AutoUpdateRegistry)` | Combines the path, loads the file, and selects automatic creation. |
 | `checkSection(string)` | Checks for a section, excluding tables. Never creates sections or writes files. |
-| `getParameter(section, key, string defaultValue)` | Returns the stored text, or the default if the section or key is missing. |
+| `getParameter(section, key, string defaultValue)` | Returns the stored text, or the default if the section or key is missing. With `autoUpdateRegistry=true`, stores that missing default in memory, creating the section if needed. |
 | `getParameter(..., bool)` | Only `TRUE`, ignoring case and surrounding whitespace, is true. Any other stored value is false, even when the default is true. |
 | `getParameter(..., double/float)` | Parses using invariant culture after replacing commas with periods. Returns the default if parsing fails. |
 | `getParameter(..., long/int)` | Parses an integer using invariant culture. Returns the default if parsing fails. The int overload parses as long and then performs an unchecked cast, so values outside the int range can wrap instead of returning the default. |
@@ -138,8 +146,8 @@ Relative paths are resolved against the working directory when their path object
 | `save(string FileName)` | Saves to the specified path, relative to the current working directory if not rooted. |
 | `save(FileInfo Path, string FileName)` | Treats `Path.FullName` as a base directory and combines it with `FileName` using `System.IO.Path.Combine`. A rooted filename overrides the base directory. |
 | `save(FileInfo File)` | Saves to the file represented by `File`. |
-| `setParameter(string sectionName, string parameterName, string value)` | Creates missing sections and keys or replaces an existing value. Stores text without parsing or trimming and preserves case-sensitive names. Never writes files. |
-| `addParameter(section, key, defaultValue)` | Adds a missing parameter in memory, creating its section if needed. Preserves existing values, including null. Stores text unchanged and never writes files, regardless of `autoUpdateFile`. Null section/key names throw `ArgumentNullException`; empty names are allowed. |
+| `setParameter(string sectionName, string parameterName, string value)` | Replaces an existing value; creates missing sections and keys only when `autoUpdateRegistry=true`. Otherwise missing entries are left unchanged. Stores text without parsing or trimming and preserves case-sensitive names. Never writes files. |
+| `addParameter(section, key, defaultValue)` | When `autoUpdateRegistry=true`, adds a missing parameter in memory and creates its section if needed; otherwise makes no changes. Preserves existing values, including null. Stores text unchanged and never writes files. Null section/key names throw `ArgumentNullException`; empty names are allowed. |
 
 
 ### Saving
@@ -185,23 +193,34 @@ Parser settings are exposed as public readonly fields:
 ```csharp
 char[] separators = config.parSeparator;
 char[] delimiters = config.parEndLineDelimiter;
-bool automaticUpdates = config.autoUpdateFile;
+bool automaticUpdates = config.autoUpdateRegistry;
 ```
 
 The array references cannot be reassigned, but their elements remain mutable.
 They default to `=` and `; , .`. Changing them after construction does not reload or change already parsed values. 
 There is no public reload method.
-`autoUpdateFile` is initialized to false and cannot be reassigned by callers.
+`autoUpdateRegistry` is readonly and is selected by the constructor. Overloads without
+a boolean argument default to false. Pass true to enable creation of missing entries.
 There are no accessor properties or getter/setter methods for these fields.
 
 `setParameter` supports in-memory overrides. Subsequent `getParameter` calls use the new values and the usual type conversions. 
 Changes are persisted only by an explicit `save` call.
 
-`addParameter` adds defaults only when a parameter is absent; `setParameter` also replaces existing values. 
+`addParameter` adds defaults only when a parameter is absent and automatic creation
+is enabled; `setParameter` also replaces existing values in either mode.
 Neither method writes files.
 
-With the current constructors, `autoUpdateFile` is always false: getters return missing defaults without storing them.
-Use `addParameter` or `setParameter` to change data in memory. 
+The flag controls only creation in the in-memory registry, not disk writes:
+
+| Operation | `autoUpdateRegistry=false` (default) | `autoUpdateRegistry=true` |
+| --- | --- | --- |
+| `setParameter` | Updates existing parameters; missing entries are skipped. | Updates or creates parameters and their sections. |
+| `addParameter` | Makes no changes. | Creates missing parameters and sections; preserves existing values. |
+| `getParameter` (all overloads) | Returns defaults without storing them. | Stores missing defaults; later reads use the stored values. |
+
+`checkSection`, `getTable`, and listing methods never create entries. This replaces
+the old field name and changes setter creation behavior: callers that previously
+relied on unconditional creation must pass true to the constructor.
 `checkSection` remains a pure existence check. 
 Only the `save` methods write configuration changes to disk.
 
@@ -258,7 +277,7 @@ invoke the runner directly with `--msbuild`. There is no automatic xbuild fallba
 
 The runner builds the solution from source in a temporary directory and tests the resulting assembly using `tests/ConfigurationFileTests.cs`. 
 Each test runs in an isolated directory that is removed afterward. 
-Tests verify that the readonly `autoUpdateFile` flag does not cause file writes. 
+Tests verify that the readonly `autoUpdateRegistry` flag does not cause file writes.
 Build artifacts are kept outside the repository. 
 The command prints a result summary and exits with a nonzero status if a build or test fails.
 
@@ -270,4 +289,4 @@ The suite covers:
   under three cultures, including integer boundaries and overflow behavior.
 - Empty files, missing files, and duplicate sections, tables, and keys.
 - In-memory overrides and source file preservation.
-- The documented behavior of `addParameter`, the readonly `autoUpdateFile` flag, and mutable elements of readonly delimiter arrays.
+- The documented behavior of `addParameter`, the readonly `autoUpdateRegistry` flag, and mutable elements of readonly delimiter arrays.
