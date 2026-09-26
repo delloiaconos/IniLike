@@ -121,6 +121,7 @@ class ConfigurationFileTests
     {
         ConfigurationFile cfg = new ConfigurationFile();
         equal(false, cfg.autoUpdateRegistry);
+        equal(false, cfg.autoSaveRegistry);
         foreach (string name in new string[] { "parSeparator", "parEndLineDelimiter" })
         {
             System.Reflection.FieldInfo field = typeof(ConfigurationFile).GetField(name);
@@ -590,8 +591,77 @@ class ConfigurationFileTests
         throws<ArgumentNullException>(delegate { Config.dump(null); });
     }
 
+    static void automaticSaving()
+    {
+        const string Source = "## original\n[S]\nexisting=original\n";
+        foreach (bool Update in new bool[] { false, true }) {
+            foreach (bool Save in new bool[] { false, true }) {
+                ConfigurationFile Config = load(Source);
+                Config.autoUpdateRegistry = Update;
+                Config.autoSaveRegistry = Save;
+                equal(Save, Config.autoSaveRegistry);
+                Config.addParameter("S", "existing", "ignored");
+                Config.setParameter("S", "existing", "memory change");
+                equal(Source, File.ReadAllText("config.ini"));
+                Config.addParameter("S", "added", "value");
+                Config.setParameter("NEW", "set", "value");
+                equal(42, Config.getParameter("GET", "number", 42));
+                ConfigurationFile Disk = new ConfigurationFile("config.ini");
+                equal(Update && Save, Disk.listParameters("S").Contains("added"));
+                equal(Update && Save, Disk.checkSection("NEW"));
+                equal(Update && Save, Disk.checkSection("GET"));
+                if (Update && Save) {
+                    equal("memory change", get(Disk, "S", "existing"));
+                    equal(42, Disk.getParameter("GET", "number", 0));
+                } else {
+                    equal(Source, File.ReadAllText("config.ini"));
+                }
+            }
+        }
+        ConfigurationFile Current = loadForUpdates(Source);
+        Current.save("copy.ini");
+        string Copy = File.ReadAllText("copy.ini");
+        Current.autoSaveRegistry = true;
+        Current.addParameter("S", "first", "value");
+        equal("value", get(new ConfigurationFile("config.ini"), "S", "first"));
+        equal(Copy, File.ReadAllText("copy.ini"));
+        string Saved = File.ReadAllText("config.ini");
+        Current.autoSaveRegistry = false;
+        Current.addParameter("S", "second", "value");
+        equal(Saved, File.ReadAllText("config.ini"));
+        equal(true, Current.listParameters("S").Contains("second"));
+    }
+
+    static void automaticSaveFailures()
+    {
+        ConfigurationFile Empty = new ConfigurationFile {
+            autoUpdateRegistry = true, autoSaveRegistry = true };
+        throws<InvalidOperationException>(delegate { Empty.addParameter("ADD", "key", "value"); });
+        throws<InvalidOperationException>(delegate { Empty.setParameter("SET", "key", "value"); });
+        throws<InvalidOperationException>(delegate { Empty.getParameter("GET", "key", "value"); });
+        equal(0, Empty.listSections().Count);
+        equal(0, Directory.GetFiles(".").Length);
+
+        const string Source = "[S]\nk=value\n";
+        ConfigurationFile Config = loadForUpdates(Source);
+        Config.autoSaveRegistry = true;
+        throws<InvalidOperationException>(delegate { Config.addParameter("NEW", "key", "a=b"); });
+        equal(false, Config.checkSection("NEW"));
+        throws<InvalidOperationException>(delegate { Config.setParameter("S", "bad", "a=b"); });
+        equal(false, Config.listParameters("S").Contains("bad"));
+        equal(Source, File.ReadAllText("config.ini"));
+        File.Delete("config.ini");
+        Directory.CreateDirectory("config.ini");
+        throws<IOException>(delegate { Config.getParameter("GET", "key", "value"); });
+        equal(false, Config.checkSection("GET"));
+        equal(true, Directory.Exists("config.ini"));
+        equal(0, Directory.GetFiles(".", ".inilike-*.tmp").Length);
+    }
+
     static int Main()
     {
+        test("automatic saving occurs only for newly created entries", automaticSaving);
+        test("automatic save failures roll back new entries", automaticSaveFailures);
         test("registry dump shares save serialization and respects stream ownership", registryDump);
         test("registry creation can be enabled and disabled at runtime", toggleRegistryUpdates);
         test("automatic registry creation respects the property", automaticRegistryUpdates);

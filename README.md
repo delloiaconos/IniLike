@@ -80,6 +80,7 @@ classDiagram
         +char[] parSeparator
         +char[] parEndLineDelimiter
         +bool autoUpdateRegistry
+        +bool autoSaveRegistry
         +ConfigurationFile()
         +ConfigurationFile(string FileName)
         +ConfigurationFile(FileInfo FilePath)
@@ -105,7 +106,7 @@ classDiagram
         +save(FileInfo Path, string FileName) void
         +save(FileInfo File) void
     }
-    note for ConfigurationFile "Namespace: ConfigurationFilesReader. Delimiter fields are readonly; autoUpdateRegistry is a public get/set property."
+    note for ConfigurationFile "Namespace: ConfigurationFilesReader. Delimiter fields are readonly; autoUpdateRegistry and autoSaveRegistry are public get/set properties."
 ```
 
 File paths are stored internally as `System.IO.FileInfo`. 
@@ -122,12 +123,13 @@ Relative paths are resolved against the working directory when their path object
 
 | Member | Behavior |
 | --- | --- |
+| `autoSaveRegistry` | Public get/set property, false by default. Saves the entire registry to its original file when a new parameter or section is created. Requires `autoUpdateRegistry=true` for creation through parameter methods. |
 | `ConfigurationFile(string filename)` | Loads the file immediately. Missing files and parsing errors cause exceptions. |
 | `ConfigurationFile(FileInfo FilePath)` | Loads the file represented by the typed path immediately. |
 | `ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)` | Combines the directory and filename and loads the resulting file immediately. |
 | `ConfigurationFile()` | Creates an empty container without loading a file; automatic creation is disabled. |
 | `checkSection(string)` | Checks for a section, excluding tables. Never creates sections or writes files. |
-| `getParameter(section, key, string defaultValue)` | Returns the stored text, or the default if the section or key is missing. With `autoUpdateRegistry=true`, stores that missing default in memory, creating the section if needed. |
+| `getParameter(section, key, string defaultValue)` | Returns the stored text, or the default if the section or key is missing. With `autoUpdateRegistry=true`, stores that missing default, creating the section if needed; also saves it when `autoSaveRegistry=true`. |
 | `getParameter(..., bool)` | Only `TRUE`, ignoring case and surrounding whitespace, is true. Any other stored value is false, even when the default is true. |
 | `getParameter(..., double/float)` | Parses using invariant culture after replacing commas with periods. Returns the default if parsing fails. |
 | `getParameter(..., long/int)` | Parses an integer using invariant culture. Returns the default if parsing fails. The int overload parses as long and then performs an unchecked cast, so values outside the int range can wrap instead of returning the default. |
@@ -142,11 +144,33 @@ Relative paths are resolved against the working directory when their path object
 | `save(string FileName)` | Saves to the specified path, relative to the current working directory if not rooted. |
 | `save(FileInfo Path, string FileName)` | Treats `Path.FullName` as a base directory and combines it with `FileName` using `System.IO.Path.Combine`. A rooted filename overrides the base directory. |
 | `save(FileInfo File)` | Saves to the file represented by `File`. |
-| `setParameter(string sectionName, string parameterName, string value)` | Replaces an existing value; creates missing sections and keys only when `autoUpdateRegistry=true`. Otherwise missing entries are left unchanged. Stores text without parsing or trimming and preserves case-sensitive names. Never writes files. |
-| `addParameter(section, key, defaultValue)` | When `autoUpdateRegistry=true`, adds a missing parameter in memory and creates its section if needed; otherwise makes no changes. Preserves existing values, including null. Stores text unchanged and never writes files. Null section/key names throw `ArgumentNullException`; empty names are allowed. |
+| `setParameter(string sectionName, string parameterName, string value)` | Replaces an existing value; creates missing sections and keys only when `autoUpdateRegistry=true`. Otherwise missing entries are left unchanged. Stores text without parsing or trimming and preserves case-sensitive names. Newly created entries are saved when `autoSaveRegistry=true`. |
+| `addParameter(section, key, defaultValue)` | When `autoUpdateRegistry=true`, adds a missing parameter in memory and creates its section if needed; otherwise makes no changes. Preserves existing values, including null. Stores text unchanged; new entries are saved when `autoSaveRegistry=true`. Null section/key names throw `ArgumentNullException`; empty names are allowed. |
 
 
 ### Saving
+
+To save newly created entries automatically:
+
+```csharp
+var config = new ConfigurationFile("config.ini") {
+    autoUpdateRegistry = true,
+    autoSaveRegistry = true
+};
+config.addParameter("SERVER", "newKey", "value");
+```
+
+`setParameter`, `addParameter`, and missing-default reads through `getParameter`
+trigger a save only when they create a parameter or section. Updating an existing
+value, adding an already existing parameter, inspecting sections, changing table
+rows, or toggling either property does not trigger a save. A triggered save writes
+the entire current registry, including earlier unsaved changes.
+
+Automatic saves always target the original file, even after an explicit save to
+another destination. Creating entries with automatic saving enabled on an object
+without an original file throws `InvalidOperationException` before changing it.
+If saving fails, the new parameter and any section created for it are removed;
+earlier in-memory changes remain. Save errors propagate to the caller.
 
 `dump()` serializes the registry without writing a file:
 
@@ -219,13 +243,13 @@ or disable creation of missing entries. Changing it does not remove existing dat
 or write files. The delimiter fields have no accessor properties or setter methods.
 
 `setParameter` supports in-memory overrides. Subsequent `getParameter` calls use the new values and the usual type conversions. 
-Changes are persisted only by an explicit `save` call.
+Changes are persisted by explicit `save` calls or when creation triggers automatic saving.
 
 `addParameter` adds defaults only when a parameter is absent and automatic creation
 is enabled; `setParameter` also replaces existing values in either mode.
-Neither method writes files.
+Neither method writes files when `autoSaveRegistry=false` (the default).
 
-The flag controls only creation in the in-memory registry, not disk writes:
+The `autoUpdateRegistry` flag controls creation; `autoSaveRegistry` separately controls saving new entries:
 
 | Operation | `autoUpdateRegistry=false` (default) | `autoUpdateRegistry=true` |
 | --- | --- | --- |
@@ -239,7 +263,8 @@ relied on unconditional creation must set the property to true before adding ent
 Constructors do not accept an automatic-update argument; object initializers may
 be used to set the property immediately after construction.
 `checkSection` remains a pure existence check. 
-Only the `save` methods write configuration changes to disk.
+Explicit `save` calls and automatic saves of newly created entries write changes
+to disk. Both use the same serialization, validation and replacement procedure.
 
 File readers and writers are disposed through `using` blocks, including on exceptions.
 Concurrent changes are not synchronized.

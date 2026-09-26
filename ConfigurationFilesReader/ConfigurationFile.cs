@@ -19,6 +19,7 @@ namespace ConfigurationFilesReader
         public readonly char[] parSeparator = { '=' };
         public readonly char[] parEndLineDelimiter = { ';', ',', '.' };
         public bool autoUpdateRegistry { get; set; }
+        public bool autoSaveRegistry { get; set; }
 
         private readonly FileInfo FilePath;
         private Dictionary<string, strDictionary> dictSections;
@@ -264,7 +265,7 @@ namespace ConfigurationFilesReader
             }
         }
 
-        // Add a default parameter in memory without replacing an existing value.
+        // Add a missing default and optionally save the registry to its original file.
         public void addParameter(string SectionName, string ParameterName, string DefaultValue)
         {
             if (SectionName == null) {
@@ -278,13 +279,30 @@ namespace ConfigurationFilesReader
                 return;
             }
 
-            strDictionary parameters;
-            if (!dictSections.TryGetValue(SectionName, out parameters)) {
-                parameters = new strDictionary();
-                dictSections.Add(SectionName, parameters);
+            strDictionary Parameters;
+            bool NewSection = !dictSections.TryGetValue(SectionName, out Parameters);
+            if (!NewSection && Parameters.ContainsKey(ParameterName)) {
+                return;
             }
-            if (!parameters.ContainsKey(ParameterName)) {
-                parameters.Add(ParameterName, DefaultValue);
+            if (autoSaveRegistry && FilePath == null) {
+                throw new InvalidOperationException("Automatic saving requires an original configuration file.");
+            }
+            if (NewSection) {
+                Parameters = new strDictionary();
+                dictSections.Add(SectionName, Parameters);
+            }
+            Parameters.Add(ParameterName, DefaultValue);
+            if (autoSaveRegistry) {
+                try {
+                    save();
+                } catch {
+                    // Undo this addition if the original file could not be saved.
+                    Parameters.Remove(ParameterName);
+                    if (NewSection) {
+                        dictSections.Remove(SectionName);
+                    }
+                    throw;
+                }
             }
         }
 
