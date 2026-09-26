@@ -125,10 +125,10 @@ namespace ConfigurationFilesReader
             if (Writer == null) {
                 throw new ArgumentNullException("Writer");
             }
-            foreach (string Section in listSections()) {
-                Writer.WriteLine("[" + Section + "]");
-                foreach (string Parameter in listParameters(Section)) {
-                    Writer.WriteLine(Parameter + "=" + dictSections[Section][Parameter] + ";");
+            foreach (string SecName in listSections()) {
+                Writer.WriteLine("[" + SecName + "]");
+                foreach (string Parameter in listParameters(SecName)) {
+                    Writer.WriteLine(Parameter + "=" + dictSections[SecName][Parameter] + ";");
                 }
             }
             foreach (string Table in listTables()) {
@@ -216,12 +216,12 @@ namespace ConfigurationFilesReader
             if (dictSections.Count != Other.dictSections.Count || dictTables.Count != Other.dictTables.Count) {
                 return false;
             }
-            foreach (KeyValuePair<string, strDictionary> Section in dictSections) {
+            foreach (KeyValuePair<string, strDictionary> SecName in dictSections) {
                 strDictionary Parameters;
-                if (!Other.dictSections.TryGetValue(Section.Key, out Parameters) || Section.Value.Count != Parameters.Count) {
+                if (!Other.dictSections.TryGetValue(SecName.Key, out Parameters) || SecName.Value.Count != Parameters.Count) {
                     return false;
                 }
-                foreach (KeyValuePair<string, string> Parameter in Section.Value) {
+                foreach (KeyValuePair<string, string> Parameter in SecName.Value) {
                     string Value;
                     if (!Parameters.TryGetValue(Parameter.Key, out Value) || Parameter.Value != Value) {
                         return false;
@@ -243,36 +243,36 @@ namespace ConfigurationFilesReader
         }
 
         // Check whether the section exists.
-        public bool checkSection(string SectionName)
+        public bool checkSection(string SecName)
         {
-            return dictSections.ContainsKey(SectionName);
+            return dictSections.ContainsKey(SecName);
         }
 
         // Update existing values; create missing entries only when enabled.
-        public void setParameter(string sectionName, string parameterName, string value)
+        public void setParameter(string SecName, string ParName, string value)
         {
-            if (sectionName == null) {
-                throw new ArgumentNullException("sectionName");
+            if (SecName == null) {
+                throw new ArgumentNullException("SecName");
             }
-            if (parameterName == null) {
-                throw new ArgumentNullException("parameterName");
+            if (ParName == null) {
+                throw new ArgumentNullException("ParName");
             }
             strDictionary Parameters;
-            if (dictSections.TryGetValue(sectionName, out Parameters) && Parameters.ContainsKey(parameterName)) {
-                Parameters[parameterName] = value;
+            if (dictSections.TryGetValue(SecName, out Parameters) && Parameters.ContainsKey(ParName)) {
+                Parameters[ParName] = value;
             } else if (autoUpdateRegistry) {
-                addParameter(sectionName, parameterName, value);
+                addParameter(SecName, ParName, value);
             }
         }
 
         // Add a missing default and optionally save the registry to its original file.
-        public void addParameter(string SectionName, string ParameterName, string DefaultValue)
+        public void addParameter(string SecName, string ParName, string DefaultVal)
         {
-            if (SectionName == null) {
-                throw new ArgumentNullException("SectionName");
+            if (SecName == null) {
+                throw new ArgumentNullException("SecName");
             }
-            if (ParameterName == null) {
-                throw new ArgumentNullException("ParameterName");
+            if (ParName == null) {
+                throw new ArgumentNullException("ParName");
             }
 
             if (!autoUpdateRegistry) {
@@ -280,8 +280,8 @@ namespace ConfigurationFilesReader
             }
 
             strDictionary Parameters;
-            bool NewSection = !dictSections.TryGetValue(SectionName, out Parameters);
-            if (!NewSection && Parameters.ContainsKey(ParameterName)) {
+            bool NewSection = !dictSections.TryGetValue(SecName, out Parameters);
+            if (!NewSection && Parameters.ContainsKey(ParName)) {
                 return;
             }
             if (autoSaveRegistry && FilePath == null) {
@@ -289,17 +289,17 @@ namespace ConfigurationFilesReader
             }
             if (NewSection) {
                 Parameters = new strDictionary();
-                dictSections.Add(SectionName, Parameters);
+                dictSections.Add(SecName, Parameters);
             }
-            Parameters.Add(ParameterName, DefaultValue);
+            Parameters.Add(ParName, DefaultVal);
             if (autoSaveRegistry) {
                 try {
                     save();
                 } catch {
                     // Undo this addition if the original file could not be saved.
-                    Parameters.Remove(ParameterName);
+                    Parameters.Remove(ParName);
                     if (NewSection) {
-                        dictSections.Remove(SectionName);
+                        dictSections.Remove(SecName);
                     }
                     throw;
                 }
@@ -307,76 +307,76 @@ namespace ConfigurationFilesReader
         }
 
         // Get a parameter value or use the default when missing.
-        public string getParameter(string SectionName, string ParameterName, string DefaultValue )
+        public string getParameter(string SecName, string ParName, string DefaultVal )
         {
-            if (checkSection(SectionName)) {
-                strDictionary sectParameters = dictSections[SectionName];
-                if (sectParameters.ContainsKey(ParameterName)) {
-                    return sectParameters[ParameterName];
+            if (checkSection(SecName)) {
+                strDictionary sectParameters = dictSections[SecName];
+                if (sectParameters.ContainsKey(ParName)) {
+                    return sectParameters[ParName];
                 } else {
                     if (autoUpdateRegistry) {
-                        addParameter(SectionName, ParameterName, DefaultValue);
+                        addParameter(SecName, ParName, DefaultVal);
                     }
-                    return DefaultValue;
+                    return DefaultVal;
                 }
             } else {
                 if (autoUpdateRegistry) {
-                    addParameter(SectionName, ParameterName, DefaultValue);
+                    addParameter(SecName, ParName, DefaultVal);
                 }
-                return DefaultValue;
+                return DefaultVal;
             }
         }
 
         // Get a boolean parameter.
-        public bool getParameter(string SectionName, string ParameterName, bool DefaultValue)
+        public bool getParameter(string SecName, string ParName, bool DefaultVal)
         {
-            string strParameter = getParameter(SectionName, ParameterName, DefaultValue ? "TRUE" : "FALSE");
-            strParameter = strParameter.Trim().ToUpper();
-            return strParameter == "TRUE" || strParameter == "1";
+            string strVal = getParameter(SecName, ParName, DefaultVal ? "TRUE" : "FALSE");
+            strVal = strVal.Trim().ToUpper();
+            return strVal == "TRUE" || strVal == "1";
         }
 
         // Get a double parameter.
-        public double getParameter(string SectionName, string ParameterName, double DefaultValue)
+        public double getParameter(string SecName, string ParName, double DefaultVal)
         {
-            string strParameter = getParameter(SectionName, ParameterName, DefaultValue.ToString(CultureInfo.InvariantCulture));
-            strParameter = strParameter.Trim();
-            strParameter = strParameter.Replace(',', '.');
-            double OutValue;
+            string strVal = getParameter(SecName, ParName, DefaultVal.ToString(CultureInfo.InvariantCulture));
+            strVal = strVal.Trim();
+            strVal = strVal.Replace(',', '.');
+            double outVal;
             try {
-                OutValue = double.Parse(strParameter, CultureInfo.InvariantCulture);
+                outVal = double.Parse(strVal, CultureInfo.InvariantCulture);
             } catch {
-                OutValue = DefaultValue;
+                outVal = DefaultVal;
             }
 
-            return OutValue;
+            return outVal;
         }
 
         // Get a float parameter.
-        public float getParameter(string SectionName, string ParameterName, float DefaultValue)
+        public float getParameter(string SecName, string ParName, float DefaultVal)
         {
-            return (float)((double)getParameter(SectionName, ParameterName, (double)DefaultValue));
+            return (float)((double)getParameter(SecName, ParName, (double)DefaultVal));
         }
 
         // Get a long parameter.
-        public long getParameter(string SectionName, string ParameterName, long DefaultValue)
+        public long getParameter(string SecName, string ParName, long DefaultVal)
         {
-            string strParameter = getParameter(SectionName, ParameterName, DefaultValue.ToString(CultureInfo.InvariantCulture));
-            strParameter = strParameter.Trim();
+            string strVal = getParameter(SecName, ParName, DefaultVal.ToString(CultureInfo.InvariantCulture));
+            strVal = strVal.Trim();
             
-            long OutValue;
+            long outVal;
             try {
-                OutValue = long.Parse(strParameter, CultureInfo.InvariantCulture);
+                outVal = long.Parse(strVal, CultureInfo.InvariantCulture);
             } catch {
-                OutValue = DefaultValue;
+                outVal = DefaultVal;
             }
 
-            return OutValue;
+            return outVal;
         }
 
         // Get an integer parameter.
-        public int getParameter(string SectionName, string ParameterName, int DefaultValue)
+        public int getParameter(string SecName, string ParName, int DefaultVal)
         {
-            return (int)((long)getParameter(SectionName, ParameterName, (long)DefaultValue));
+            return (int)((long)getParameter(SecName, ParName, (long)DefaultVal));
         }
 
         // Return a sorted snapshot of section names, excluding tables.
@@ -388,13 +388,13 @@ namespace ConfigurationFilesReader
         }
 
         // Return a sorted snapshot of parameter names in a section.
-        public List<string> listParameters(string Section)
+        public List<string> listParameters(string SecName)
         {
-            if (Section == null) {
-                throw new ArgumentNullException("Section");
+            if (SecName == null) {
+                throw new ArgumentNullException("SecName");
             }
             strDictionary Parameters;
-            if (!dictSections.TryGetValue(Section, out Parameters)) {
+            if (!dictSections.TryGetValue(SecName, out Parameters)) {
                 return new List<string>();
             }
             List<string> Names = new List<string>(Parameters.Keys);
