@@ -67,6 +67,20 @@ The parser supports the format described here rather than a complete INI specifi
 
 ## Usage
 
+Example configuration files are in [`examples/`](examples/):
+
+| File | Demonstrates |
+| --- | --- |
+| [example.ini](examples/example.ini) | Basic parameters, numeric values and tables. |
+| [sections.ini](examples/sections.ini) | Plain, `SEC` and `SECTION` headers; boolean `0`/`1`; optional named and unnamed `END`. |
+| [tables.ini](examples/tables.ini) | `TABLE`/`TBL`, test phases, blank columns and empty tables. |
+| [lists.ini](examples/lists.ini) | `LIST`/`LST`, plain items and literal assignments, repeated items and empty lists. |
+| [bench.ini](examples/bench.ini) | Combined sections, tables and lists, including shared names across block types. |
+
+Load an example from the repository root with
+`new ConfigurationFile("examples/bench.ini")`. Automatic creation and saving are
+runtime properties configured in C#; they are not directives in the INI file.
+
 Reference `ConfigurationFilesReader.dll` and use the public API:
 
 ```csharp
@@ -296,6 +310,39 @@ to disk. Both use the same serialization, validation and replacement procedure.
 File readers and writers are disposed through `using` blocks, including on exceptions.
 Concurrent changes are not synchronized.
 
+## Console validation
+
+`ConfigurationValidator` loads a file through `ConfigurationFile` and reports
+whether the library accepts it. Build the solution with `make ms-build` (or
+`make x-build` when only legacy xbuild is installed), then run:
+
+```sh
+mono ConfigurationValidator/bin/Release/ConfigurationValidator.exe examples/bench.ini
+mono ConfigurationValidator/bin/Release/ConfigurationValidator.exe --help
+```
+
+On Windows, run `ConfigurationValidator.exe "C:\path with spaces\file.ini"`
+directly. Keep `ConfigurationFilesReader.dll` and `ConfigurationValidator.exe.config`
+alongside the executable; the project build copies them there. The executable
+targets .NET Framework 3.5; its runtime configuration permits CLR 4 or CLR 2.
+
+Successful loading prints section, table and list counts to stdout. Failures print
+the exception type and original library message (including inner exceptions) to
+stderr, without a stack trace. The first loading error stops validation; the tool
+does not save or modify the input file.
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | File loaded successfully, or help displayed. |
+| `1` | The library failed to load the file. |
+| `2` | Missing, empty or extra command-line arguments. |
+
+Validation follows the existing parser's permissive rules. For example, lines
+outside blocks or section lines with multiple `=` characters are ignored, not
+reported as syntax errors. Success means the library can load the file; it does
+not guarantee that every line was consumed or that application-specific values
+are valid. Duplicates and mismatched `END` labels are reported as library errors.
+
 ## Build
 
 With GNU Make and MSBuild installed, build from the repository root:
@@ -306,11 +353,11 @@ make ms-build
 
 - `ms-build` is the default target: running `make` alone invokes MSBuild.
 - `x-build` explicitly uses the deprecated Mono xbuild tool: `make x-build`.
-- `clean` removes the library's entire `bin` and `obj` directories, including Debug, Release, and stale build artifacts: `make clean`.
+- `clean` removes both projects' entire `bin` and `obj` directories, including Debug, Release, and stale build artifacts: `make clean`.
 - `test` runs the Python test runner, which builds its own temporary copy of the library. 
   Build and test default to Release; select Debug with `CONFIGURATION=Debug`, for example `make test CONFIGURATION=Debug`. 
   Tests also require Python 3; override its command with `PYTHON=python3` if needed.
-- `IniLike.sln` contains the library project. 
+- `IniLike.sln` contains the library and console validator projects.
   Build it with a toolchain that supports .NET Framework 3.5. 
   MSBuild must have access to the .NET Framework 3.5 reference assemblies and compatible build targets:
 
