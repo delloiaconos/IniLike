@@ -20,8 +20,9 @@ namespace ConfigurationValidator
             try {
                 ConfigurationFile Config = new ConfigurationFile(Args[0]);
                 Console.WriteLine("Configuration loaded successfully: {0}", Args[0]);
-                Console.WriteLine("Sections: {0}; tables: {1}; lists: {2}.",
-                    Config.listSections().Count, Config.listTables().Count, Config.listLists().Count);
+                Console.WriteLine("Sections: {0}; tables: {1}; lists: {2}; dictionaries: {3}.",
+                    Config.listSections().Count, Config.listTables().Count, Config.listLists().Count,
+                    Config.listDictionaries().Count);
                 return 0;
             } catch (Exception Error) {
                 Console.Error.WriteLine("Error loading '{0}':", Args[0]);

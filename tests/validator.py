@@ -34,8 +34,11 @@ def main():
         check(["--help"], 0, "Exit codes:")
         check(["missing.ini"], 1, "Unable to open file:", True)
         cases = [
-            ("valid file.ini", "[SEC:S]\nk=v\n[END:S]\n[LST:L]\na=b\n[END]\n", 0, "Sections: 1; tables: 0; lists: 1."),
-            ("empty.ini", "", 0, "Sections: 0; tables: 0; lists: 0."),
+            ("valid file.ini", "[SEC:S]\nk=v\n[END:S]\n[LST:L]\na=b\n[END]\n", 0, "Sections: 1; tables: 0; lists: 1; dictionaries: 0."),
+            ("empty.ini", "", 0, "Sections: 0; tables: 0; lists: 0; dictionaries: 0."),
+            ("dictionary.ini", "[DICT:CHANNELS]\nx=3\ny=3.14\n[END]\n", 0, "dictionaries: 1."),
+            ("duplicate-dictionary.ini", "[DICT:D]\nx=1\nx=2\n", 1, "ArgumentException:"),
+            ("dictionary-end.ini", "[DICTIONARY:D]\nx=1\n[END:OTHER]\n", 1, "End label does not match the current block: 'D'."),
             ("ignored.ini", "outside=x\n[S]\ninvalid\nkey=a=b\n", 0, "Configuration loaded successfully"),
             ("duplicate.ini", "[S]\nk=1\nk=2\n", 1, "ArgumentException:"),
             ("duplicate-list.ini", "[LIST:L]\n[END]\n[LST:L]\n", 1, "ArgumentException:"),

@@ -805,8 +805,76 @@ class ConfigurationFileTests
         equal(0, Empty.getList("missing").Count);
     }
 
+    static void dictionaryBlocks()
+    {
+        const string Body = "x = 3\ny = 3.14\nkey1 = value1\nkey2 = acq2.sensor1\nstr = acq2.sensor3\n";
+        foreach (string Keyword in new string[] { "DICT", "DICTIONARY" }) {
+            foreach (string End in new string[] { "", "[END]", " [END: CHANNELS ] " }) {
+                string Text = "[" + Keyword + ": CHANNELS ]\n" + Body;
+                if (End.Length > 0) Text += End + "\noutside=ignored\n";
+                ConfigurationFile Config = load(Text);
+                Dictionary<string, string> Entries = Config.getDictionary("CHANNELS");
+                equal(5, Entries.Count);
+                equal("3", Entries["x"]);
+                equal("3.14", Entries["y"]);
+                equal("value1", Entries["key1"]);
+                equal("acq2.sensor1", Entries["key2"]);
+                equal("acq2.sensor3", Entries["str"]);
+                equal("CHANNELS", String.Join("|", Config.listDictionaries().ToArray()));
+                equal(0, Config.listSections().Count);
+                equal(0, Config.listParameters().Count);
+                equal(0, Config.listTables().Count);
+                equal(0, Config.listLists().Count);
+                Config.save("dictionary.ini");
+                Dictionary<string, string> Reloaded = new ConfigurationFile("dictionary.ini").getDictionary("CHANNELS");
+                equal(5, Reloaded.Count);
+                equal("3.14", Reloaded["y"]);
+                equal(true, File.ReadAllText("dictionary.ini").StartsWith("[DICT:CHANNELS]"));
+            }
+        }
+        ConfigurationFile Mixed = load("[SEC:S]\nk=section\n[TBL:S]\nrow\n[LST:S]\nitem\n[DICT:S]\n## skip\n\nk=dictionary\nK=case\nempty=;\n=unnamed\nbad=a=b\ninvalid\n[DICTIONARY:EMPTY]\n[END]\n[DICT:s]\nk=lower\n[END:s]\n[SEC:AFTER]\nk=after\n");
+        equal("section", get(Mixed, "S", "k"));
+        equal("row", Mixed.getTable("S")[0]);
+        equal("item", Mixed.getList("S")[0]);
+        Dictionary<string, string> Live = Mixed.getDictionary("S");
+        equal("dictionary", Live["k"]);
+        equal("case", Live["K"]);
+        equal("", Live["empty"]);
+        equal("unnamed", Live[""]);
+        equal(false, Live.ContainsKey("bad"));
+        equal(false, Live.ContainsKey("invalid"));
+        equal("after", get(Mixed, "AFTER", "k"));
+        equal("EMPTY|S|s", String.Join("|", Mixed.listDictionaries().ToArray()));
+        Mixed.listDictionaries().Clear();
+        equal(3, Mixed.listDictionaries().Count);
+        Mixed.getDictionary("missing")["key"] = "detached";
+        equal(0, Mixed.getDictionary("missing").Count);
+        equal(0, Mixed.getDictionary("EMPTY").Count);
+        Mixed.autoSaveRegistry = true;
+        string Source = File.ReadAllText("config.ini");
+        Live["k"] = "modified";
+        Live["unicode"] = "caffè 日本";
+        equal(true, Object.ReferenceEquals(Live, Mixed.getDictionary("S")));
+        equal(Source, File.ReadAllText("config.ini"));
+        Mixed.save("mixed.ini");
+        equal("modified", new ConfigurationFile("mixed.ini").getDictionary("S")["k"]);
+        equal("caffè 日本", new ConfigurationFile("mixed.ini").getDictionary("S")["unicode"]);
+        string Saved = File.ReadAllText("mixed.ini");
+        Live["bad"] = "a=b";
+        throws<InvalidOperationException>(delegate { Mixed.save("mixed.ini"); });
+        equal(Saved, File.ReadAllText("mixed.ini"));
+        throws<ArgumentNullException>(delegate { Mixed.getDictionary(null); });
+        throws<ArgumentException>(delegate { load("[DICT:D]\nx=1\nx=2\n"); });
+        throws<ArgumentException>(delegate { load("[DICT:D]\n[END]\n[DICTIONARY:D]\n"); });
+        throws<FormatException>(delegate { load("[DICT:D]\n[END:d]\n"); });
+        using (FileStream Stream = File.Open("config.ini", FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            equal(true, Stream.CanWrite);
+        equal(0, new ConfigurationFile().listDictionaries().Count);
+    }
+
     static int Main()
     {
+        test("DICT and DICTIONARY preserve independent string dictionaries", dictionaryBlocks);
         test("LIST and LST preserve raw ordered items and round-trip with other blocks", listBlocks);
         test("SEC and SECTION headers support optional named and unnamed END", sectionBlocks);
         test("TABLE and TBL blocks support optional named and unnamed END", tableBlocks);

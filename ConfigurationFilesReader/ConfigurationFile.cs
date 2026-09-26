@@ -14,7 +14,7 @@ namespace ConfigurationFilesReader
 
     public class ConfigurationFile
     {
-        private enum SectionType { None = 0, Section, Table, List };
+        private enum SectionType { None = 0, Section, Table, List, Dictionary };
 
         public readonly string[] parComment = { "##" };
         public readonly char[] parSeparator = { '=' };
@@ -26,6 +26,7 @@ namespace ConfigurationFilesReader
         private Dictionary<string, strDictionary> dictSections;
         private Dictionary<string, strTable> dictTables;
         private Dictionary<string, List<string>> dictLists;
+        private Dictionary<string, strDictionary> dictDictionaries;
         
         public ConfigurationFile(string FileName)
             : this(new FileInfo(FileName))
@@ -54,6 +55,7 @@ namespace ConfigurationFilesReader
             dictSections = new Dictionary<string, strDictionary>();
             dictTables = new Dictionary<string, strTable>();
             dictLists = new Dictionary<string, List<string>>();
+            dictDictionaries = new Dictionary<string, strDictionary>();
         }
 
         private static FileInfo combinePath(DirectoryInfo BaseDirectory, string FileName)
@@ -116,6 +118,12 @@ namespace ConfigurationFilesReader
                             currentParent = currentLine.Substring(PrefixLength, currentLine.Length - PrefixLength - 1).Trim();
                             reading = SectionType.List;
                             dictLists.Add(currentParent, new List<string>());
+                        } else if ((currentLine.StartsWith("[DICT:", StringComparison.Ordinal) ||
+                                    currentLine.StartsWith("[DICTIONARY:", StringComparison.Ordinal)) && currentLine.EndsWith("]", StringComparison.Ordinal)) {
+                            int PrefixLength = currentLine.StartsWith("[DICT:", StringComparison.Ordinal) ? 6 : 12;
+                            currentParent = currentLine.Substring(PrefixLength, currentLine.Length - PrefixLength - 1).Trim();
+                            reading = SectionType.Dictionary;
+                            dictDictionaries.Add(currentParent, new strDictionary());
                         } else if (currentLine.StartsWith("[") && currentLine.EndsWith("]")) {
                             int PrefixLength = 1;
                             if (currentLine.StartsWith("[SECTION:", StringComparison.Ordinal)) {
@@ -126,11 +134,12 @@ namespace ConfigurationFilesReader
                             currentParent = currentLine.Substring(PrefixLength, currentLine.Length - PrefixLength - 1).Trim();
                             reading = SectionType.Section;
                             dictSections.Add(currentParent, new strDictionary());
-                        } else if (reading == SectionType.Section && currentLine.Length > 0) {
+                        } else if ((reading == SectionType.Section || reading == SectionType.Dictionary) && currentLine.Length > 0) {
                             string[] sline = currentLine.Split(parSeparator);
                             if (sline.Count() == 2) {
                                 sline[1] = sline[1].Trim().TrimEnd(parEndLineDelimiter);
-                                dictSections[currentParent].Add(sline[0].Trim(), sline[1]);
+                                strDictionary Entries = reading == SectionType.Section ? dictSections[currentParent] : dictDictionaries[currentParent];
+                                Entries.Add(sline[0].Trim(), sline[1]);
                             }
                         } else if (reading == SectionType.Table && currentLine.Length > 0) {
                             currentLine = currentLine.Trim().TrimEnd(parEndLineDelimiter);
@@ -183,6 +192,14 @@ namespace ConfigurationFilesReader
                 Writer.WriteLine("[LIST:" + Name + "]");
                 foreach (string Item in dictLists[Name]) {
                     Writer.WriteLine(Item + ";");
+                }
+            }
+            foreach (string Name in listDictionaries()) {
+                Writer.WriteLine("[DICT:" + Name + "]");
+                List<string> Keys = new List<string>(dictDictionaries[Name].Keys);
+                Keys.Sort(StringComparer.Ordinal);
+                foreach (string Key in Keys) {
+                    Writer.WriteLine(Key + "=" + dictDictionaries[Name][Key] + ";");
                 }
             }
             Writer.Flush();
@@ -261,7 +278,7 @@ namespace ConfigurationFilesReader
         // Validate serialized data with the same parser used by callers.
         private bool hasSameData(ConfigurationFile Other)
         {
-            if (dictSections.Count != Other.dictSections.Count || dictTables.Count != Other.dictTables.Count || dictLists.Count != Other.dictLists.Count) {
+            if (dictSections.Count != Other.dictSections.Count || dictTables.Count != Other.dictTables.Count || dictLists.Count != Other.dictLists.Count || dictDictionaries.Count != Other.dictDictionaries.Count) {
                 return false;
             }
             foreach (KeyValuePair<string, strDictionary> SecName in dictSections) {
@@ -294,6 +311,18 @@ namespace ConfigurationFilesReader
                 }
                 for (int Index = 0; Index < Items.Count; Index++) {
                     if (List.Value[Index] != Items[Index]) {
+                        return false;
+                    }
+                }
+            }
+            foreach (KeyValuePair<string, strDictionary> Dictionary in dictDictionaries) {
+                strDictionary Entries;
+                if (!Other.dictDictionaries.TryGetValue(Dictionary.Key, out Entries) || Dictionary.Value.Count != Entries.Count) {
+                    return false;
+                }
+                foreach (KeyValuePair<string, string> Entry in Dictionary.Value) {
+                    string Value;
+                    if (!Entries.TryGetValue(Entry.Key, out Value) || Entry.Value != Value) {
                         return false;
                     }
                 }
@@ -497,6 +526,24 @@ namespace ConfigurationFilesReader
             }
             List<string> Items;
             return dictLists.TryGetValue(ListName, out Items) ? Items : new List<string>();
+        }
+
+        // Return a sorted snapshot of dictionary names.
+        public List<string> listDictionaries()
+        {
+            List<string> Names = new List<string>(dictDictionaries.Keys);
+            Names.Sort(StringComparer.Ordinal);
+            return Names;
+        }
+
+        // Return the live dictionary, or an unattached empty dictionary when missing.
+        public Dictionary<string, string> getDictionary(string DictionaryName)
+        {
+            if (DictionaryName == null) {
+                throw new ArgumentNullException("DictionaryName");
+            }
+            strDictionary Entries;
+            return dictDictionaries.TryGetValue(DictionaryName, out Entries) ? Entries : new strDictionary();
         }
 
         // Get a table by name.

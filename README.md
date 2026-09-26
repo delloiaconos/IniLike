@@ -31,16 +31,21 @@ second; 20; inactive;
   complete string `x1=mach1.volt1`. Items are not parsed as key/value pairs;
   order and duplicates are preserved. Lists use the same whitespace trimming,
   trailing delimiters and full-line comment rules as tables.
-- A section, table or list may end with `[END]` or `[END:NAME]`. The closing name, when supplied
+- `[DICT:NAME]` and `[DICTIONARY:NAME]` are equivalent dictionary headers.
+  Entries are string keys and string values: `x = 3` stores `"3"`, and
+  `y = 3.14` stores `"3.14"`. They use the same key/value parsing, trimming and
+  comment rules as sections, including ignoring lines without exactly one `=`.
+  Duplicate keys throw; keys differing in case remain distinct.
+- A section, table, list or dictionary may end with `[END]` or `[END:NAME]`. The closing name, when supplied
   for an active block, must match its name (after trimming); a mismatch throws
   `FormatException`. Closing markers are not sections or table rows. Subsequent
-  data is ignored until another section, table or list header. A closing marker outside
+  data is ignored until another block header. A closing marker outside
   block also resets the parser to that state. Without a closing marker, the
-  next section/table/list header or end of file ends the block. Saving uses the
-  canonical `[NAME]`, `[TABLE:NAME]` and `[LIST:NAME]` forms without closing markers.
+  next block header or end of file ends the block. Saving uses the canonical
+  `[NAME]`, `[TABLE:NAME]`, `[LIST:NAME]` and `[DICT:NAME]` forms without closing markers.
 - Section, key, and table names are **case-sensitive**. The `SEC:`, `SECTION:`,
-  `TABLE:`, `TBL:`, `LIST:`, `LST:` and `END` keywords
-  must be uppercase. Sections, tables and lists use separate dictionaries and may
+  `TABLE:`, `TBL:`, `LIST:`, `LST:`, `DICT:`, `DICTIONARY:` and `END` keywords
+  must be uppercase. Sections, tables, lists and dictionaries have separate name spaces and may
   share a name.
 - Blank lines and lines starting with any nonempty prefix in `parComment` after
   trimming are ignored. The default prefix is `##`. Matching is ordinal and
@@ -55,8 +60,8 @@ second; 20; inactive;
 - Quoting, escaping, multiline values, and inline comments are not supported.
   Quotes remain part of the value. A line such as `; comment` is treated as
   data inside a table.
-- Duplicate section, table or list names within their respective dictionaries,
-  or duplicate keys within a section, cause an exception. Repeated list items are allowed.
+- Duplicate block names within their respective name spaces, or duplicate keys
+  within a section or dictionary, cause an exception. Repeated list items are allowed.
 - Lines before the first section or table are ignored.
 - Relative configuration file paths are resolved against the working directory.
   Paths stored as values are returned as text without resolution.
@@ -75,6 +80,7 @@ Example configuration files are in [`examples/`](examples/):
 | [sections.ini](examples/sections.ini) | Plain, `SEC` and `SECTION` headers; boolean `0`/`1`; optional named and unnamed `END`. |
 | [tables.ini](examples/tables.ini) | `TABLE`/`TBL`, test phases, blank columns and empty tables. |
 | [lists.ini](examples/lists.ini) | `LIST`/`LST`, plain items and literal assignments, repeated items and empty lists. |
+| [dictionaries.ini](examples/dictionaries.ini) | `DICT`/`DICTIONARY`, string key/value entries and optional endings. |
 | [bench.ini](examples/bench.ini) | Combined sections, tables and lists, including shared names across block types. |
 
 Load an example from the repository root with
@@ -131,6 +137,8 @@ classDiagram
         +getTable(string TableName) List~string~
         +getList(string ListName) List~string~
         +listLists() List~string~
+        +getDictionary(string DictionaryName) Dictionary
+        +listDictionaries() List~string~
         +listSections() List~string~
         +listParameters(string Section) List~string~
         +listParameters() List~string~
@@ -172,6 +180,8 @@ Relative paths are resolved against the working directory when their path object
 | `getTable(name)` | Returns the mutable internal list. For a missing table, returns a new empty list that is not attached to the container. |
 | `getList(string ListName)` | Returns the mutable internal list of string items. A missing list returns a new, unattached empty list. Null throws `ArgumentNullException`. Never creates a list or triggers saving. |
 | `listLists()` | Returns an independent, ordinally sorted snapshot of list names, excluding sections and tables. |
+| `getDictionary(string DictionaryName)` | Returns the live `Dictionary<string, string>`. Missing names return an unattached empty dictionary; null throws `ArgumentNullException`. Does not create a registered dictionary. |
+| `listDictionaries()` | Returns an independent, ordinally sorted snapshot of dictionary names. |
 | `listSections()` | Returns section names, excluding tables. |
 | `listParameters(string Section)` | Returns parameter names in the specified section. Missing or empty sections return an empty list; null throws `ArgumentNullException`. |
 | `listParameters()` | Returns distinct parameter names across all sections. The same name in multiple sections appears once; names differing in case remain distinct. |
@@ -185,6 +195,20 @@ Relative paths are resolved against the working directory when their path object
 | `setParameter(string sectionName, string parameterName, string value)` | Replaces an existing value; creates missing sections and keys only when `autoUpdateRegistry=true`. Otherwise missing entries are left unchanged. Stores text without parsing or trimming and preserves case-sensitive names. Newly created entries are saved when `autoSaveRegistry=true`. |
 | `addParameter(section, key, defaultValue)` | When `autoUpdateRegistry=true`, adds a missing parameter in memory and creates its section if needed; otherwise makes no changes. Preserves existing values, including null. Stores text unchanged; new entries are saved when `autoSaveRegistry=true`. Null section/key names throw `ArgumentNullException`; empty names are allowed. |
 
+
+Dictionary contents are accessed separately from section parameters:
+
+```csharp
+Dictionary<string, string> channels = config.getDictionary("CHANNELS");
+string x = channels["x"]; // "3", with no numeric conversion.
+channels["key1"] = "updated";
+config.save();
+```
+
+`getParameter`, `setParameter`, `addParameter`, `checkSection` and `listParameters`
+operate on sections only. Direct dictionary mutations do not trigger automatic
+creation or saving; call `save` explicitly. Dictionary names and keys are sorted
+ordinally for dump/save, and the same round-trip validation applies to their values.
 
 ### Saving
 
@@ -234,7 +258,8 @@ config.save(new System.IO.FileInfo("backup.ini"));
 config.save(new System.IO.FileInfo("backups"), "config.ini");
 ```
 
-All overloads save the current in-memory sections, parameters, table rows and list items.
+All overloads save the current in-memory sections, parameters, table rows, list
+items and dictionary entries.
 Explicit destinations do not change the original path used by `save()`. An
 in-memory configuration always needs an explicit destination, even after its
 first save. Parent directories must already exist; null arguments are rejected.
@@ -338,7 +363,7 @@ directly. Keep `ConfigurationFilesReader.dll` and `ConfigurationValidator.exe.co
 alongside the executable; the project build copies them there. The executable
 targets .NET Framework 3.5; its runtime configuration permits CLR 4 or CLR 2.
 
-Successful loading prints section, table and list counts to stdout. Failures print
+Successful loading prints section, table, list and dictionary counts to stdout. Failures print
 the exception type and original library message (including inner exceptions) to
 stderr, without a stack trace. The first loading error stops validation; the tool
 does not save or modify the input file.
