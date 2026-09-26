@@ -56,6 +56,8 @@ def main():
                      root / "tests" / (name + ".cs")], build)
                 arguments = [library, operator_ui] if name == "CompatibilityProbe" else []
                 run(["mono", executable] + arguments, build)
+            run([sys.executable, root / "tests" / "validator.py",
+                 build / "ConfigurationValidator.exe", root / "examples"], build)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
         print("FAIL: " + str(error), file=sys.stderr)
         return 1
