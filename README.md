@@ -300,8 +300,8 @@ not commands with arguments. Both build targets support `CONFIGURATION=Debug`.
 
 ## Automated tests
 
-Prerequisites: Python 3, MSBuild, and Mono, with `msbuild`, `mcs`, and `mono` available on
-`PATH`. No additional Python packages or test frameworks are required.
+Prerequisites: Python 3 and Mono (`mcs` and `mono` on `PATH`), plus MSBuild
+or legacy xbuild with .NET Framework 3.5 reference assemblies and compatible targets. No additional Python packages or test frameworks are required.
 
 Run from the repository root:
 
@@ -312,10 +312,14 @@ python3 tests/run.py --configuration Debug
 python3 tests/run.py --msbuild /path/to/msbuild
 ```
 
-`make test` uses MSBuild through the runner, independently of the build target
-previously used. It forwards `CONFIGURATION` and uses `PYTHON`, but currently does
-not forward `MSBUILD` or `XBUILD`. To choose a test build executable outside `PATH`,
-invoke the runner directly with `--msbuild`. There is no automatic xbuild fallback.
+`make test` prefers MSBuild and falls back to xbuild when MSBuild is unavailable,
+printing which fallback is selected. xbuild still emits its deprecation warning.
+`CONFIGURATION` and `PYTHON` select the build configuration and Python interpreter.
+Use `make test MSBUILD=/path/to/msbuild` or the runner's `--msbuild` option to
+select an executable explicitly; a missing explicit executable is an error and
+does not trigger fallback. `XBUILD=/path/to/xbuild` (runner: `--xbuild`) selects
+the fallback executable. An actual build failure never triggers a retry with
+another tool. The `ms-build` and `x-build` targets retain their explicit tool selection.
 
 The runner builds the solution from source in a temporary directory and tests the resulting assembly using `tests/ConfigurationFileTests.cs`. 
 Each test runs in an isolated directory that is removed afterward. 

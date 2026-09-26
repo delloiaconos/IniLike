@@ -3,6 +3,10 @@ PYTHON ?= python3
 MSBUILD ?= msbuild
 XBUILD ?= xbuild
 
+# Without an explicit MSBUILD override, let the test runner detect the toolchain.
+ifneq ($(origin MSBUILD),file)
+TEST_BUILD_ARGS = --msbuild "$(MSBUILD)"
+endif
 
 .PHONY: x-build ms-build clean test
 
@@ -16,4 +20,4 @@ clean:
 	rm -rf -- ConfigurationFilesReader/bin ConfigurationFilesReader/obj
 
 test:
-	$(PYTHON) tests/run.py --configuration $(CONFIGURATION)
+	$(PYTHON) tests/run.py --configuration $(CONFIGURATION) $(TEST_BUILD_ARGS) --xbuild "$(XBUILD)"

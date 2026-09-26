@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build with MSBuild and run isolated regression tests (Python 3 + Mono)."""
+"""Build with MSBuild (or legacy xbuild) and run isolated tests with Mono."""
 import argparse
 from pathlib import Path
 import shutil
@@ -11,14 +11,26 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--configuration", choices=("Debug", "Release"), default="Release")
-    parser.add_argument("--msbuild", default="msbuild", help="MSBuild executable name or path (default: msbuild)")
+    parser.add_argument("--msbuild", help="Explicit build executable; otherwise prefer msbuild, then xbuild")
+    parser.add_argument("--xbuild", default="xbuild", help="Fallback xbuild executable (default: xbuild)")
     parser.add_argument("--operator-ui", type=Path, help="Optional OperatorUI assembly for CompatibilityProbe")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    for tool in (args.msbuild, "mcs", "mono"):
+    if args.msbuild:
+        build_tool = shutil.which(args.msbuild)
+        if not build_tool:
+            parser.error("Missing prerequisite: " + args.msbuild)
+    else:
+        build_tool = shutil.which("msbuild")
+        if not build_tool:
+            build_tool = shutil.which(args.xbuild)
+            if not build_tool:
+                parser.error("Missing build tool: install msbuild or xbuild, or specify --msbuild /path/to/executable")
+            print("MSBuild is unavailable; using deprecated xbuild: " + build_tool, flush=True)
+    for tool in ("mcs", "mono"):
         if not shutil.which(tool):
             parser.error("Missing prerequisite: " + tool)
-    msbuild = Path(shutil.which(args.msbuild)).resolve()
+    msbuild = Path(build_tool).resolve()
     operator_ui = args.operator_ui.resolve() if args.operator_ui else None
     if operator_ui and not operator_ui.is_file():
         parser.error("OperatorUI assembly does not exist: " + str(operator_ui))
