@@ -16,16 +16,15 @@ namespace ConfigurationFilesReader
     {
         private enum SectionType { None = 0,Section, Table };
 
-        public char[] parSeparator = { '=' };
-        public char[] parEndLineDelimiter = { ';', ',', '.' };
+        private char[] parSeparator = { '=' };
+        private char[] parEndLineDelimiter = { ';', ',', '.' };
 
         private string FileName;
         private Dictionary<string, strDictionary> dictSections;
         private Dictionary<string, strTable> dictTables;
         
-        public bool UpdateFile = false;
-        
-        
+        private bool autoUpdateFile = false;
+
         public ConfigurationFile(string filename)
         {
             FileName = filename;
@@ -149,7 +148,7 @@ namespace ConfigurationFilesReader
                 }
                 else
                 {
-                    if (UpdateFile)
+                    if (autoUpdateFile)
                     {
                         addParameter(SectionName, ParameterName, DefaultValue);
                     }
@@ -158,7 +157,7 @@ namespace ConfigurationFilesReader
             }
             else
             {
-                if (UpdateFile)
+                if (autoUpdateFile)
                 {
                     addParameter(SectionName, ParameterName, DefaultValue);
                 }
