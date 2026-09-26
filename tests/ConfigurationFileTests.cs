@@ -57,6 +57,42 @@ class ConfigurationFileTests
         }
     }
 
+    static void pathConstructors()
+    {
+        DirectoryInfo BaseDirectory = Directory.CreateDirectory("config files");
+        string FileName = "settings.ini";
+        string FullPath = Path.Combine(BaseDirectory.FullName, FileName);
+        const string Source = "[S]\nk=value;\n";
+        File.WriteAllText(FullPath, Source);
+        foreach (ConfigurationFile Config in new ConfigurationFile[] {
+            new ConfigurationFile(Path.Combine("config files", FileName)),
+            new ConfigurationFile(FullPath),
+            new ConfigurationFile(new FileInfo(FullPath)),
+            new ConfigurationFile(BaseDirectory, FileName) })
+        {
+            equal("value", get(Config, "S", "k"));
+            Config.setParameter("S", "k", "memory only");
+            equal(Source, File.ReadAllText(FullPath));
+        }
+        // DirectoryInfo keeps its resolved path when the working directory changes.
+        string Original = Environment.CurrentDirectory;
+        Directory.CreateDirectory("other");
+        try
+        {
+            Environment.CurrentDirectory = Path.Combine(Original, "other");
+            equal("value", get(new ConfigurationFile(BaseDirectory, FileName), "S", "k"));
+        }
+        finally { Environment.CurrentDirectory = Original; }
+        using (FileStream File = System.IO.File.Open(FullPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            equal(true, File.CanWrite);
+        throws<ArgumentNullException>(delegate { new ConfigurationFile((FileInfo)null); });
+        throws<ArgumentNullException>(delegate { new ConfigurationFile((string)null); });
+        throws<ArgumentNullException>(delegate { new ConfigurationFile((DirectoryInfo)null, FileName); });
+        throws<ArgumentNullException>(delegate { new ConfigurationFile(BaseDirectory, null); });
+        throws<Exception>(delegate { new ConfigurationFile(new FileInfo("missing.ini")); });
+        throws<Exception>(delegate { new ConfigurationFile(BaseDirectory, "missing.ini"); });
+    }
+
     static void fileHandles()
     {
         load("[S]\nk=value\n");
@@ -304,6 +340,7 @@ class ConfigurationFileTests
 
     static int Main()
     {
+        test("string and typed path constructors", pathConstructors);
         test("file handles released after loading and parsing errors", fileHandles);
         test("empty container and all default overloads", defaults);
         test("sections, whitespace, delimiters, Unicode and literal values", parsing);

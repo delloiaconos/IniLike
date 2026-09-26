@@ -14,39 +14,57 @@ namespace ConfigurationFilesReader
 
     public class ConfigurationFile
     {
-        private const enum SectionType { None = 0, Section, Table };
+        private enum SectionType { None = 0, Section, Table };
 
         public readonly char[] parSeparator = { '=' };
         public readonly char[] parEndLineDelimiter = { ';', ',', '.' };
         public readonly bool autoUpdateFile = false;
 
-        private string strFileName;
+        private readonly FileInfo FilePath;
         private Dictionary<string, strDictionary> dictSections;
         private Dictionary<string, strTable> dictTables;
         
-        public ConfigurationFile(string strFileName)
+        public ConfigurationFile(string FileName)
+            : this(new FileInfo(FileName))
         {
-            strFileName = strFileName;
-            dictSections = new Dictionary<string, strDictionary>();
-            dictTables = new Dictionary<string, strTable>();
+        }
+
+        public ConfigurationFile(FileInfo FilePath)
+            : this()
+        {
+            if (FilePath == null)
+                throw new ArgumentNullException("FilePath");
+            this.FilePath = FilePath;
             if (!loadFile())
-                throw new System.Exception("Unable to open file: '" + strFileName + "'.");
+                throw new System.Exception("Unable to open file: '" + FilePath.FullName + "'.");
+        }
+
+        public ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)
+            : this(combinePath(BaseDirectory, FileName))
+        {
         }
 
         public ConfigurationFile()
         {
-            strFileName = "";
             dictSections = new Dictionary<string, strDictionary>();
             dictTables = new Dictionary<string, strTable>();
-            
+        }
+
+        private static FileInfo combinePath(DirectoryInfo BaseDirectory, string FileName)
+        {
+            if (BaseDirectory == null)
+                throw new ArgumentNullException("BaseDirectory");
+            if (FileName == null)
+                throw new ArgumentNullException("FileName");
+            return new FileInfo(Path.Combine(BaseDirectory.FullName, FileName));
         }
 
         // Load the configuration file content.
         private bool loadFile()
         {
-            if (File.Exists(strFileName))
+            if (File.Exists(FilePath.FullName))
             {
-                using (StreamReader srFile = new StreamReader(strFileName))
+                using (StreamReader srFile = FilePath.OpenText())
                 {
 
                     string currentParent = "";
@@ -99,8 +117,6 @@ namespace ConfigurationFilesReader
             
         }
 
-        
-
         // Check whether the section exists.
         public bool checkSection(string SectionName)
         {
@@ -132,9 +148,7 @@ namespace ConfigurationFilesReader
             if (!parameters.ContainsKey(ParameterName))
                 parameters.Add(ParameterName, DefaultValue);
         }
-
-
-
+        
         // Get a parameter value or use the default when missing.
         public string getParameter(string SectionName, string ParameterName, string DefaultValue )
         {

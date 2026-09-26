@@ -76,6 +76,23 @@ int port = config.getParameter("SERVER", "port", 80);
 
 ## API reference
 
+File paths are stored internally as `System.IO.FileInfo`. The string constructor
+remains available; typed paths can be passed directly or combined with a filename:
+
+```csharp
+var fromString = new ConfigurationFile("config.ini");
+var fromPath = new ConfigurationFile(new System.IO.FileInfo("config.ini"));
+var fromDirectory = new ConfigurationFile(
+    new System.IO.DirectoryInfo("settings"), "config.ini");
+```
+
+Relative paths are resolved against the working directory when their path objects
+are created. The directory overload uses `Path.Combine`: a relative filename is
+resolved under the base directory; a rooted filename overrides it. Null path
+arguments are rejected. With the string and `FileInfo` overloads, a null literal
+must be explicitly typed to select an overload. The parameterless constructor
+still creates an in-memory configuration without an associated file.
+
 Method names use camelCase: `checkSection`, `getParameter` (all overloads),
 `addParameter`, `getTable`, and `setParameter`. This is a breaking API rename:
 callers using PascalCase names (including `SetParameter`) must update their calls
@@ -86,6 +103,8 @@ are unchanged by this rename.
 | Member | Behavior |
 | --- | --- |
 | `ConfigurationFile(string filename)` | Loads the file immediately. Missing files and parsing errors cause exceptions. |
+| `ConfigurationFile(FileInfo FilePath)` | Loads the file represented by the typed path immediately. |
+| `ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)` | Combines the directory and filename and loads the resulting file immediately. |
 | `ConfigurationFile()` | Creates an empty container without loading a file. |
 | `checkSection(string)` | Checks for a section, excluding tables. Never creates sections or writes files. |
 | `getParameter(section, key, string defaultValue)` | Returns the stored text, or the default if the section or key is missing. |
