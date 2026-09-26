@@ -382,8 +382,88 @@ class ConfigurationFileTests
         equal(1, Directory.GetFiles(".").Length);
     }
 
+    static void saving()
+    {
+        const string Source = "## original comment\n[S]\nk=old;\nempty=;\nspace=value ;\n[EMPTY]\n[TABLE:S]\na;b;\n.;\n[TABLE:EMPTY]\n";
+        ConfigurationFile Config = load(Source);
+        Config.setParameter("S", "k", "caffè 日本");
+        Config.addParameter("NEW", "number", "12");
+        Config.getTable("S").Add("x=y");
+        Config.save("copy.ini");
+        equal(Source, File.ReadAllText("config.ini"));
+        Config.save(new FileInfo("typed.ini"));
+        Directory.CreateDirectory("output files");
+        Config.save(new FileInfo("output files"), "combined.ini");
+        string Serialized = File.ReadAllText("copy.ini");
+        equal(Serialized, File.ReadAllText("typed.ini"));
+        equal(Serialized, File.ReadAllText(Path.Combine("output files", "combined.ini")));
+        ConfigurationFile Reloaded = new ConfigurationFile("copy.ini");
+        equal("caffè 日本", get(Reloaded, "S", "k"));
+        equal("", get(Reloaded, "S", "empty"));
+        equal("value ", get(Reloaded, "S", "space"));
+        equal(12, Reloaded.getParameter("NEW", "number", 0));
+        equal(true, Reloaded.checkSection("EMPTY"));
+        equal(0, Reloaded.getTable("EMPTY").Count);
+        equal("a;b||x=y", String.Join("|", Reloaded.getTable("S").ToArray()));
+        string OriginalDirectory = Environment.CurrentDirectory;
+        try {
+            Environment.CurrentDirectory = Path.Combine(OriginalDirectory, "output files");
+            Config.save();
+        } finally { Environment.CurrentDirectory = OriginalDirectory; }
+        equal(Serialized, File.ReadAllText("config.ini"));
+        Config.setParameter("S", "k", "updated");
+        Config.save();
+        equal("updated", get(new ConfigurationFile("config.ini"), "S", "k"));
+        equal(Serialized, File.ReadAllText("copy.ini"));
+        using (FileStream Stream = File.Open("config.ini", FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            equal(true, Stream.CanWrite);
+
+        ConfigurationFile Empty = new ConfigurationFile();
+        throws<InvalidOperationException>(delegate { Empty.save(); });
+        Empty.save("empty.ini");
+        equal(0L, new FileInfo("empty.ini").Length);
+        throws<InvalidOperationException>(delegate { Empty.save(); });
+        Empty.setParameter("", "", "value");
+        Empty.save("memory.ini");
+        equal("value", get(new ConfigurationFile("memory.ini"), "", ""));
+        equal(0, Directory.GetFiles(".", ".inilike-*.tmp").Length);
+    }
+
+    static void saveFailures()
+    {
+        ConfigurationFile Config = new ConfigurationFile();
+        throws<ArgumentNullException>(delegate { Config.save((string)null); });
+        throws<ArgumentNullException>(delegate { Config.save((FileInfo)null); });
+        throws<ArgumentNullException>(delegate { Config.save(null, "file.ini"); });
+        throws<ArgumentNullException>(delegate { Config.save(new FileInfo("."), null); });
+        const string Original = "keep this file unchanged";
+        File.WriteAllText("destination.ini", Original);
+        foreach (string Value in new string[] { null, "a=b", "line\nbreak", " leading", "trailing.", "trailing;" }) {
+            Config.setParameter("S", "k", Value);
+            throws<InvalidOperationException>(delegate { Config.save("destination.ini"); });
+            equal(Original, File.ReadAllText("destination.ini"));
+            equal(0, Directory.GetFiles(".", ".inilike-*.tmp").Length);
+        }
+        Config.setParameter("S", "k", "valid");
+        Config.setParameter("TABLE:reserved", "k", "value");
+        throws<InvalidOperationException>(delegate { Config.save("new.ini"); });
+        equal(false, File.Exists("new.ini"));
+        ConfigurationFile Table = load("[TABLE:T]\nrow\n");
+        Table.getTable("T").Add("## ignored");
+        throws<InvalidOperationException>(delegate { Table.save("destination.ini"); });
+        equal(Original, File.ReadAllText("destination.ini"));
+        Config = new ConfigurationFile();
+        throws<DirectoryNotFoundException>(delegate { Config.save(Path.Combine("missing", "file.ini")); });
+        Directory.CreateDirectory("directory.ini");
+        throws<IOException>(delegate { Config.save("directory.ini"); });
+        equal(true, Directory.Exists("directory.ini"));
+        equal(0, Directory.GetFiles(".", ".inilike-*.tmp").Length);
+    }
+
     static int Main()
     {
+        test("save overloads preserve sections, tables and original destination", saving);
+        test("save rejects unrepresentable data and preserves destinations on failure", saveFailures);
         test("name listings are sorted independent snapshots", listNames);
         test("string and typed path constructors", pathConstructors);
         test("file handles released after loading and parsing errors", fileHandles);

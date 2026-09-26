@@ -98,6 +98,10 @@ classDiagram
         +listParameters(string Section) List~string~
         +listParameters() List~string~
         +listTables() List~string~
+        +save() void
+        +save(string FileName) void
+        +save(FileInfo Path, string FileName) void
+        +save(FileInfo File) void
     }
     note for ConfigurationFile "Namespace: ConfigurationFilesReader. All three public fields are readonly."
 ```
@@ -130,9 +134,45 @@ Relative paths are resolved against the working directory when their path object
 | `listParameters(string Section)` | Returns parameter names in the specified section. Missing or empty sections return an empty list; null throws `ArgumentNullException`. |
 | `listParameters()` | Returns distinct parameter names across all sections. The same name in multiple sections appears once; names differing in case remain distinct. |
 | `listTables()` | Returns table names, excluding sections. |
+| `save()` | Saves to the original file. Throws `InvalidOperationException` if constructed without a file. |
+| `save(string FileName)` | Saves to the specified path, relative to the current working directory if not rooted. |
+| `save(FileInfo Path, string FileName)` | Treats `Path.FullName` as a base directory and combines it with `FileName` using `System.IO.Path.Combine`. A rooted filename overrides the base directory. |
+| `save(FileInfo File)` | Saves to the file represented by `File`. |
 | `setParameter(string sectionName, string parameterName, string value)` | Creates missing sections and keys or replaces an existing value. Stores text without parsing or trimming and preserves case-sensitive names. Never writes files. |
 | `addParameter(section, key, defaultValue)` | Adds a missing parameter in memory, creating its section if needed. Preserves existing values, including null. Stores text unchanged and never writes files, regardless of `autoUpdateFile`. Null section/key names throw `ArgumentNullException`; empty names are allowed. |
 
+
+### Saving
+
+```csharp
+config.setParameter("SERVER", "host", "example.com");
+config.save(); // Overwrite the original file.
+config.save("copy.ini");
+config.save(new System.IO.FileInfo("backup.ini"));
+config.save(new System.IO.FileInfo("backups"), "config.ini");
+```
+
+All overloads save the current in-memory sections, parameters and table rows.
+Explicit destinations do not change the original path used by `save()`. An
+in-memory configuration always needs an explicit destination, even after its
+first save. Parent directories must already exist; null arguments are rejected.
+
+Output uses UTF-8 without a BOM, ordinally sorted section/parameter/table names,
+and the current order of table rows. Comments, source ordering and original
+formatting are not preserved. Saving uses the standard `=` separator and `;`
+terminator regardless of mutations to the public delimiter arrays.
+
+The writer closes a temporary file in the destination directory, reloads it with
+the standard parser and checks that all names and values are preserved. Data the
+format cannot represent (for example null values, values containing `=`, or
+significant trailing punctuation) causes `InvalidOperationException` rather than
+a lossy save. No quoting or escaping is introduced.
+
+An existing destination is replaced with `File.Replace`; a new destination is
+created with `File.Move`. Failed serialization or validation leaves the destination
+untouched and temporary files are cleaned up. Filesystem errors propagate;
+replacement requires filesystem support and does not fall back to truncating
+the destination. Concurrent changes to a configuration are not supported.
 
 ## Limitations
 
@@ -155,7 +195,7 @@ There is no public reload method.
 There are no accessor properties or getter/setter methods for these fields.
 
 `setParameter` supports in-memory overrides. Subsequent `getParameter` calls use the new values and the usual type conversions. 
-Changes are not persisted to disk.
+Changes are persisted only by an explicit `save` call.
 
 `addParameter` adds defaults only when a parameter is absent; `setParameter` also replaces existing values. 
 Neither method writes files.
@@ -163,9 +203,9 @@ Neither method writes files.
 With the current constructors, `autoUpdateFile` is always false: getters return missing defaults without storing them.
 Use `addParameter` or `setParameter` to change data in memory. 
 `checkSection` remains a pure existence check. 
-No operation saves changes to disk.
+Only the `save` methods write configuration changes to disk.
 
-File readers are disposed through `using` blocks, including when parsing throws an exception. 
+File readers and writers are disposed through `using` blocks, including on exceptions.
 Concurrent changes are not synchronized.
 
 ## Build

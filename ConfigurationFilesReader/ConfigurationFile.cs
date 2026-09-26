@@ -105,6 +105,115 @@ namespace ConfigurationFilesReader
             
         }
 
+        // Save to the original source file without changing its identity.
+        public void save()
+        {
+            if (FilePath == null) {
+                throw new InvalidOperationException("No original file is associated with this configuration. Specify a destination.");
+            }
+            save(FilePath);
+        }
+
+        public void save(string FileName)
+        {
+            if (FileName == null) {
+                throw new ArgumentNullException("FileName");
+            }
+            save(new FileInfo(FileName));
+        }
+
+        // Path represents the base directory, despite being supplied as FileInfo.
+        public void save(FileInfo Path, string FileName)
+        {
+            if (Path == null) {
+                throw new ArgumentNullException("Path");
+            }
+            if (FileName == null) {
+                throw new ArgumentNullException("FileName");
+            }
+            save(new FileInfo(System.IO.Path.Combine(Path.FullName, FileName)));
+        }
+
+        public void save(FileInfo File)
+        {
+            if (File == null) {
+                throw new ArgumentNullException("File");
+            }
+            string TemporaryPath = System.IO.Path.Combine(File.DirectoryName,
+                ".inilike-" + Guid.NewGuid().ToString("N") + ".tmp");
+            bool TemporaryCreated = false;
+            try {
+                // Create beside the destination so replacement stays on the same filesystem.
+                using (FileStream Stream = new FileStream(TemporaryPath, FileMode.CreateNew, FileAccess.Write)) {
+                    TemporaryCreated = true;
+                    using (StreamWriter Writer = new StreamWriter(Stream, new UTF8Encoding(false, true))) {
+                        foreach (string Section in listSections()) {
+                            Writer.WriteLine("[" + Section + "]");
+                            foreach (string Parameter in listParameters(Section)) {
+                                Writer.WriteLine(Parameter + "=" + dictSections[Section][Parameter] + ";");
+                            }
+                        }
+                        foreach (string Table in listTables()) {
+                            Writer.WriteLine("[TABLE:" + Table + "]");
+                            foreach (string Row in dictTables[Table]) {
+                                Writer.WriteLine(Row + ";");
+                            }
+                        }
+                    }
+                }
+                ConfigurationFile Reloaded;
+                try {
+                    Reloaded = new ConfigurationFile(TemporaryPath);
+                } catch (ArgumentException Error) {
+                    throw new InvalidOperationException("The configuration cannot be represented by the INI-like format.", Error);
+                }
+                if (!hasSameData(Reloaded)) {
+                    throw new InvalidOperationException("The configuration cannot be represented by the INI-like format.");
+                }
+                if (System.IO.File.Exists(File.FullName)) {
+                    System.IO.File.Replace(TemporaryPath, File.FullName, null);
+                } else {
+                    System.IO.File.Move(TemporaryPath, File.FullName);
+                }
+            } finally {
+                if (TemporaryCreated && System.IO.File.Exists(TemporaryPath)) {
+                    System.IO.File.Delete(TemporaryPath);
+                }
+            }
+        }
+
+        // Validate serialized data with the same parser used by callers.
+        private bool hasSameData(ConfigurationFile Other)
+        {
+            if (dictSections.Count != Other.dictSections.Count || dictTables.Count != Other.dictTables.Count) {
+                return false;
+            }
+            foreach (KeyValuePair<string, strDictionary> Section in dictSections) {
+                strDictionary Parameters;
+                if (!Other.dictSections.TryGetValue(Section.Key, out Parameters) || Section.Value.Count != Parameters.Count) {
+                    return false;
+                }
+                foreach (KeyValuePair<string, string> Parameter in Section.Value) {
+                    string Value;
+                    if (!Parameters.TryGetValue(Parameter.Key, out Value) || Parameter.Value != Value) {
+                        return false;
+                    }
+                }
+            }
+            foreach (KeyValuePair<string, strTable> Table in dictTables) {
+                strTable Rows;
+                if (!Other.dictTables.TryGetValue(Table.Key, out Rows) || Table.Value.Count != Rows.Count) {
+                    return false;
+                }
+                for (int Index = 0; Index < Rows.Count; Index++) {
+                    if (Table.Value[Index] != Rows[Index]) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
         // Check whether the section exists.
         public bool checkSection(string SectionName)
         {
