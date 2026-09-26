@@ -54,7 +54,7 @@ Reference `ConfigurationFilesReader.dll` and use the public API:
 using ConfigurationFilesReader;
 using System.Collections.Generic;
 
-var config = new ConfigurationFile("config.ini", true);
+var config = new ConfigurationFile("config.ini") { autoUpdateRegistry = true };
 string host = config.getParameter("SERVER", "host", "localhost");
 int port = config.getParameter("SERVER", "port", 8080);
 bool enabled = config.getParameter("SERVER", "enabled", false);
@@ -67,7 +67,7 @@ config.setParameter("DIRECTORIES", "data", "./other-data/");
 To create a configuration entirely in memory:
 
 ```csharp
-var config = new ConfigurationFile(true);
+var config = new ConfigurationFile { autoUpdateRegistry = true };
 config.setParameter("SERVER", "port", "8080");
 int port = config.getParameter("SERVER", "port", 80);
 ```
@@ -80,13 +80,9 @@ classDiagram
         +char[] parSeparator
         +char[] parEndLineDelimiter
         +bool autoUpdateRegistry
-        +ConfigurationFile(bool AutoUpdateRegistry)
         +ConfigurationFile()
-        +ConfigurationFile(string FileName, bool AutoUpdateRegistry)
         +ConfigurationFile(string FileName)
-        +ConfigurationFile(FileInfo FilePath, bool AutoUpdateRegistry)
         +ConfigurationFile(FileInfo FilePath)
-        +ConfigurationFile(DirectoryInfo BaseDirectory, string FileName, bool AutoUpdateRegistry)
         +ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)
         +checkSection(string SectionName) bool
         +setParameter(string SectionName, string ParameterName, string Value) void
@@ -107,7 +103,7 @@ classDiagram
         +save(FileInfo Path, string FileName) void
         +save(FileInfo File) void
     }
-    note for ConfigurationFile "Namespace: ConfigurationFilesReader. All three public fields are readonly."
+    note for ConfigurationFile "Namespace: ConfigurationFilesReader. Delimiter fields are readonly; autoUpdateRegistry is a public get/set property."
 ```
 
 File paths are stored internally as `System.IO.FileInfo`. 
@@ -128,10 +124,6 @@ Relative paths are resolved against the working directory when their path object
 | `ConfigurationFile(FileInfo FilePath)` | Loads the file represented by the typed path immediately. |
 | `ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)` | Combines the directory and filename and loads the resulting file immediately. |
 | `ConfigurationFile()` | Creates an empty container without loading a file; automatic creation is disabled. |
-| `ConfigurationFile(bool AutoUpdateRegistry)` | Creates an empty container with the selected automatic-creation mode. |
-| `ConfigurationFile(string FileName, bool AutoUpdateRegistry)` | Loads a file and selects automatic creation. |
-| `ConfigurationFile(FileInfo FilePath, bool AutoUpdateRegistry)` | Loads a typed path and selects automatic creation. |
-| `ConfigurationFile(DirectoryInfo BaseDirectory, string FileName, bool AutoUpdateRegistry)` | Combines the path, loads the file, and selects automatic creation. |
 | `checkSection(string)` | Checks for a section, excluding tables. Never creates sections or writes files. |
 | `getParameter(section, key, string defaultValue)` | Returns the stored text, or the default if the section or key is missing. With `autoUpdateRegistry=true`, stores that missing default in memory, creating the section if needed. |
 | `getParameter(..., bool)` | Only `TRUE`, ignoring case and surrounding whitespace, is true. Any other stored value is false, even when the default is true. |
@@ -188,20 +180,22 @@ The four listing methods return independent `List<string>` snapshots sorted with
 Changing a returned list does not modify the configuration; later in-memory changes are reflected only by a new call. Listing never creates sections or writes files. 
 Parameter listings contain names, not values.
 
-Parser settings are exposed as public readonly fields:
+Delimiter settings are public readonly fields; `autoUpdateRegistry` is a public
+get/set property:
 
 ```csharp
 char[] separators = config.parSeparator;
 char[] delimiters = config.parEndLineDelimiter;
 bool automaticUpdates = config.autoUpdateRegistry;
+config.autoUpdateRegistry = true;
 ```
 
 The array references cannot be reassigned, but their elements remain mutable.
 They default to `=` and `; , .`. Changing them after construction does not reload or change already parsed values. 
 There is no public reload method.
-`autoUpdateRegistry` is readonly and is selected by the constructor. Overloads without
-a boolean argument default to false. Pass true to enable creation of missing entries.
-There are no accessor properties or getter/setter methods for these fields.
+`autoUpdateRegistry` defaults to false for every constructor. Set the property to true or false at any time to enable
+or disable creation of missing entries. Changing it does not remove existing data
+or write files. The delimiter fields have no accessor properties or setter methods.
 
 `setParameter` supports in-memory overrides. Subsequent `getParameter` calls use the new values and the usual type conversions. 
 Changes are persisted only by an explicit `save` call.
@@ -220,7 +214,9 @@ The flag controls only creation in the in-memory registry, not disk writes:
 
 `checkSection`, `getTable`, and listing methods never create entries. This replaces
 the old field name and changes setter creation behavior: callers that previously
-relied on unconditional creation must pass true to the constructor.
+relied on unconditional creation must set the property to true before adding entries.
+Constructors do not accept an automatic-update argument; object initializers may
+be used to set the property immediately after construction.
 `checkSection` remains a pure existence check. 
 Only the `save` methods write configuration changes to disk.
 
@@ -277,7 +273,7 @@ invoke the runner directly with `--msbuild`. There is no automatic xbuild fallba
 
 The runner builds the solution from source in a temporary directory and tests the resulting assembly using `tests/ConfigurationFileTests.cs`. 
 Each test runs in an isolated directory that is removed afterward. 
-Tests verify that the readonly `autoUpdateRegistry` flag does not cause file writes.
+Tests verify that changing `autoUpdateRegistry` does not cause file writes.
 Build artifacts are kept outside the repository. 
 The command prints a result summary and exits with a nonzero status if a build or test fails.
 
@@ -289,4 +285,4 @@ The suite covers:
   under three cultures, including integer boundaries and overflow behavior.
 - Empty files, missing files, and duplicate sections, tables, and keys.
 - In-memory overrides and source file preservation.
-- The documented behavior of `addParameter`, the readonly `autoUpdateRegistry` flag, and mutable elements of readonly delimiter arrays.
+- The documented behavior of `addParameter`, the mutable `autoUpdateRegistry` property, and mutable elements of readonly delimiter arrays.

@@ -33,7 +33,7 @@ class ConfigurationFileTests
     static ConfigurationFile loadForUpdates(string Text)
     {
         File.WriteAllText("config.ini", Text);
-        return new ConfigurationFile("config.ini", true);
+        return new ConfigurationFile("config.ini") { autoUpdateRegistry = true };
     }
 
     static string get(ConfigurationFile cfg, string section, string key)
@@ -76,6 +76,7 @@ class ConfigurationFileTests
             new ConfigurationFile(new FileInfo(FullPath)),
             new ConfigurationFile(BaseDirectory, FileName) })
         {
+            equal(false, Config.autoUpdateRegistry);
             equal("value", get(Config, "S", "k"));
             Config.setParameter("S", "k", "memory only");
             equal(Source, File.ReadAllText(FullPath));
@@ -120,7 +121,7 @@ class ConfigurationFileTests
     {
         ConfigurationFile cfg = new ConfigurationFile();
         equal(false, cfg.autoUpdateRegistry);
-        foreach (string name in new string[] { "parSeparator", "parEndLineDelimiter", "autoUpdateRegistry" })
+        foreach (string name in new string[] { "parSeparator", "parEndLineDelimiter" })
         {
             System.Reflection.FieldInfo field = typeof(ConfigurationFile).GetField(name);
             equal(true, field != null && field.IsInitOnly && !field.IsStatic);
@@ -236,7 +237,7 @@ class ConfigurationFileTests
 
     static void booleans()
     {
-        ConfigurationFile cfg = new ConfigurationFile(true);
+        ConfigurationFile cfg = new ConfigurationFile { autoUpdateRegistry = true };
         foreach (string value in new string[] { "TRUE", "true", " TrUe \t" })
         {
             cfg.setParameter("S", "b", value);
@@ -269,7 +270,7 @@ class ConfigurationFileTests
         equal("separate", get(cfg, "ROWS", "key"));
         equal(source, File.ReadAllText("config.ini"));
         equal(1, Directory.GetFiles(".").Length);
-        ConfigurationFile empty = new ConfigurationFile(true);
+        ConfigurationFile empty = new ConfigurationFile { autoUpdateRegistry = true };
 
         empty.setParameter("runtime", "key", "created");
         equal("created", get(empty, "runtime", "key"));
@@ -310,7 +311,7 @@ class ConfigurationFileTests
         cfg.setParameter("S", "new", "explicit override");
         equal("explicit override", get(cfg, "S", "new"));
 
-        ConfigurationFile empty = new ConfigurationFile(true);
+        ConfigurationFile empty = new ConfigurationFile { autoUpdateRegistry = true };
 
         empty.addParameter("runtime", "key", "value");
         equal("value", get(empty, "runtime", "key"));
@@ -346,7 +347,7 @@ class ConfigurationFileTests
 
     static void listNames()
     {
-        ConfigurationFile Empty = new ConfigurationFile(true);
+        ConfigurationFile Empty = new ConfigurationFile { autoUpdateRegistry = true };
         equal(0, Empty.listSections().Count);
         equal(0, Empty.listParameters().Count);
         equal(0, Empty.listParameters("missing").Count);
@@ -424,7 +425,7 @@ class ConfigurationFileTests
         using (FileStream Stream = File.Open("config.ini", FileMode.Open, FileAccess.ReadWrite, FileShare.None))
             equal(true, Stream.CanWrite);
 
-        ConfigurationFile Empty = new ConfigurationFile(true);
+        ConfigurationFile Empty = new ConfigurationFile { autoUpdateRegistry = true };
         throws<InvalidOperationException>(delegate { Empty.save(); });
         Empty.save("empty.ini");
         equal(0L, new FileInfo("empty.ini").Length);
@@ -437,7 +438,7 @@ class ConfigurationFileTests
 
     static void saveFailures()
     {
-        ConfigurationFile Config = new ConfigurationFile(true);
+        ConfigurationFile Config = new ConfigurationFile { autoUpdateRegistry = true };
         throws<ArgumentNullException>(delegate { Config.save((string)null); });
         throws<ArgumentNullException>(delegate { Config.save((FileInfo)null); });
         throws<ArgumentNullException>(delegate { Config.save(null, "file.ini"); });
@@ -458,7 +459,7 @@ class ConfigurationFileTests
         Table.getTable("T").Add("## ignored");
         throws<InvalidOperationException>(delegate { Table.save("destination.ini"); });
         equal(Original, File.ReadAllText("destination.ini"));
-        Config = new ConfigurationFile(true);
+        Config = new ConfigurationFile { autoUpdateRegistry = true };
         throws<DirectoryNotFoundException>(delegate { Config.save(Path.Combine("missing", "file.ini")); });
         Directory.CreateDirectory("directory.ini");
         throws<IOException>(delegate { Config.save("directory.ini"); });
@@ -472,9 +473,9 @@ class ConfigurationFileTests
         File.WriteAllText("config.ini", Source);
         foreach (bool Enabled in new bool[] { false, true }) {
             foreach (ConfigurationFile Config in new ConfigurationFile[] {
-                new ConfigurationFile("config.ini", Enabled),
-                new ConfigurationFile(new FileInfo("config.ini"), Enabled),
-                new ConfigurationFile(new DirectoryInfo("."), "config.ini", Enabled) }) {
+                new ConfigurationFile("config.ini") { autoUpdateRegistry = Enabled },
+                new ConfigurationFile(new FileInfo("config.ini")) { autoUpdateRegistry = Enabled },
+                new ConfigurationFile(new DirectoryInfo("."), "config.ini") { autoUpdateRegistry = Enabled } }) {
                 equal(Enabled, Config.autoUpdateRegistry);
                 Config.setParameter("S", "existing", "updated");
                 Config.addParameter("S", "existing", "ignored");
@@ -508,16 +509,55 @@ class ConfigurationFileTests
                 equal(Source, File.ReadAllText("config.ini"));
                 equal(1, Directory.GetFiles(".").Length);
             }
-            ConfigurationFile Empty = new ConfigurationFile(Enabled);
+            ConfigurationFile Empty = new ConfigurationFile { autoUpdateRegistry = Enabled };
             Empty.addParameter("S", "k", "value");
             equal(Enabled, Empty.checkSection("S"));
             equal(Enabled, Empty.autoUpdateRegistry);
         }
     }
 
+    static void toggleRegistryUpdates()
+    {
+        const string Source = "[S]\nexisting=original\n";
+        ConfigurationFile Config = load(Source);
+        equal(false, Config.autoUpdateRegistry);
+        Config.setParameter("SET", "key", "ignored");
+        equal(false, Config.checkSection("SET"));
+
+        Config.autoUpdateRegistry = true;
+        equal(true, Config.autoUpdateRegistry);
+        Config.setParameter("SET", "key", "created");
+        Config.addParameter("ADD", "key", "created");
+        equal(42, Config.getParameter("GET", "key", 42));
+        equal(true, Config.checkSection("SET"));
+        equal(true, Config.checkSection("ADD"));
+        equal(true, Config.checkSection("GET"));
+
+        Config.autoUpdateRegistry = false;
+        equal(false, Config.autoUpdateRegistry);
+        Config.setParameter("SET", "key", "updated");
+        Config.addParameter("ADD", "key", "ignored");
+        equal("updated", get(Config, "SET", "key"));
+        equal("created", get(Config, "ADD", "key"));
+        equal(42, Config.getParameter("GET", "key", 0));
+        Config.setParameter("SET", "missing", "ignored");
+        Config.addParameter("NEW", "key", "ignored");
+        equal("fallback", get(Config, "MISSING", "key"));
+        equal(false, Config.listParameters("SET").Contains("missing"));
+        equal(false, Config.checkSection("NEW"));
+        equal(false, Config.checkSection("MISSING"));
+
+        Config.autoUpdateRegistry = true;
+        Config.addParameter("NEW", "key", "created");
+        equal(true, Config.checkSection("NEW"));
+        equal(Source, File.ReadAllText("config.ini"));
+        equal(1, Directory.GetFiles(".").Length);
+    }
+
     static int Main()
     {
-        test("automatic registry creation respects the constructor flag", automaticRegistryUpdates);
+        test("registry creation can be enabled and disabled at runtime", toggleRegistryUpdates);
+        test("automatic registry creation respects the property", automaticRegistryUpdates);
         test("save overloads preserve sections, tables and original destination", saving);
         test("save rejects unrepresentable data and preserves destinations on failure", saveFailures);
         test("name listings are sorted independent snapshots", listNames);

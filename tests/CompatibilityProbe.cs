@@ -20,14 +20,13 @@ class CompatibilityProbe
     static List<string> table(object instance,string table)
     {return (List<string>)call(instance,"getTable",new[]{typeof(string)},table);}
     static void require(bool condition,string message){if(!condition)throw new Exception(message);}
-    // Enable registry creation on current versions; older consumers create entries by default.
+    // Enable registry creation through the property when the consumer exposes it.
     static object createForUpdates(Type type, string path)
     {
-        Type[] signature=path==null ? new[]{typeof(bool)} : new[]{typeof(string),typeof(bool)};
-        ConstructorInfo constructor=type.GetConstructor(signature);
-        if(constructor!=null)
-            return constructor.Invoke(path==null ? new object[]{true} : new object[]{path,true});
-        return path==null ? Activator.CreateInstance(type) : Activator.CreateInstance(type,new object[]{path});
+        object instance=path==null ? Activator.CreateInstance(type) : Activator.CreateInstance(type,new object[]{path});
+        PropertyInfo property=type.GetProperty("autoUpdateRegistry");
+        if(property!=null) property.SetValue(instance,true,null);
+        return instance;
     }
     static string snapshot(Type type,string path,bool requireMemoryAdd)
     {

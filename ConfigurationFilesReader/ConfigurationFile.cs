@@ -18,29 +18,19 @@ namespace ConfigurationFilesReader
 
         public readonly char[] parSeparator = { '=' };
         public readonly char[] parEndLineDelimiter = { ';', ',', '.' };
-        public readonly bool autoUpdateRegistry = false;
+        public bool autoUpdateRegistry { get; set; }
 
         private readonly FileInfo FilePath;
         private Dictionary<string, strDictionary> dictSections;
         private Dictionary<string, strTable> dictTables;
         
         public ConfigurationFile(string FileName)
-            : this(FileName, false)
-        {
-        }
-
-        public ConfigurationFile(string FileName, bool AutoUpdateRegistry)
-            : this(new FileInfo(FileName), AutoUpdateRegistry)
+            : this(new FileInfo(FileName))
         {
         }
 
         public ConfigurationFile(FileInfo FilePath)
-            : this(FilePath, false)
-        {
-        }
-
-        public ConfigurationFile(FileInfo FilePath, bool AutoUpdateRegistry)
-            : this(AutoUpdateRegistry)
+            : this()
         {
             if (FilePath == null) {
                 throw new ArgumentNullException("FilePath");
@@ -52,23 +42,12 @@ namespace ConfigurationFilesReader
         }
 
         public ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)
-            : this(BaseDirectory, FileName, false)
-        {
-        }
-
-        public ConfigurationFile(DirectoryInfo BaseDirectory, string FileName, bool AutoUpdateRegistry)
-            : this(combinePath(BaseDirectory, FileName), AutoUpdateRegistry)
+            : this(combinePath(BaseDirectory, FileName))
         {
         }
 
         public ConfigurationFile()
-            : this(false)
         {
-        }
-
-        public ConfigurationFile(bool AutoUpdateRegistry)
-        {
-            autoUpdateRegistry = AutoUpdateRegistry;
             dictSections = new Dictionary<string, strDictionary>();
             dictTables = new Dictionary<string, strTable>();
         }
@@ -116,7 +95,6 @@ namespace ConfigurationFilesReader
                             currentLine = currentLine.Trim().TrimEnd(parEndLineDelimiter);
                             dictTables[currentParent].Add(currentLine);
                         }
-
                     }
                 }
                 return true;
