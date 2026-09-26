@@ -94,10 +94,10 @@ namespace ConfigurationFilesReader
 
                         if (currentLine == "[END]" ||
                             (currentLine.StartsWith("[END:", StringComparison.Ordinal) && currentLine.EndsWith("]", StringComparison.Ordinal))) {
-                            if (reading == SectionType.Table && currentLine != "[END]") {
-                                string TableName = currentLine.Substring(5, currentLine.Length - 6).Trim();
-                                if (!String.Equals(TableName, currentParent, StringComparison.Ordinal)) {
-                                    throw new FormatException("Table end label does not match the current table: '" + currentParent + "'.");
+                            if (reading != SectionType.None && currentLine != "[END]") {
+                                string BlockName = currentLine.Substring(5, currentLine.Length - 6).Trim();
+                                if (!String.Equals(BlockName, currentParent, StringComparison.Ordinal)) {
+                                    throw new FormatException("End label does not match the current block: '" + currentParent + "'.");
                                 }
                             }
                             currentParent = "";
@@ -109,7 +109,13 @@ namespace ConfigurationFilesReader
                             reading = SectionType.Table;
                             dictTables.Add(currentParent, new strTable());
                         } else if (currentLine.StartsWith("[") && currentLine.EndsWith("]")) {
-                            currentParent = currentLine.Substring(1, currentLine.Length - 1 - 1).Trim();
+                            int PrefixLength = 1;
+                            if (currentLine.StartsWith("[SECTION:", StringComparison.Ordinal)) {
+                                PrefixLength = 9;
+                            } else if (currentLine.StartsWith("[SEC:", StringComparison.Ordinal)) {
+                                PrefixLength = 5;
+                            }
+                            currentParent = currentLine.Substring(PrefixLength, currentLine.Length - PrefixLength - 1).Trim();
                             reading = SectionType.Section;
                             dictSections.Add(currentParent, new strDictionary());
                         } else if (reading == SectionType.Section && currentLine.Length > 0) {

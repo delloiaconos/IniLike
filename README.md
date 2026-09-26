@@ -21,18 +21,20 @@ first; 10; active;
 second; 20; inactive;
 ```
 
-- `[SECTION]` contains `key = value` pairs.
+- `[NAME]`, `[SEC:NAME]` and `[SECTION:NAME]` are equivalent section headers
+  containing `key = value` pairs.
 - `[TABLE:NAME]` and `[TBL:NAME]` are equivalent table headers containing text rows.
   The library returns a `List<string>`;
   callers are responsible for splitting rows into columns.
-- A table may end with `[END]` or `[END:NAME]`. The closing name, when supplied
-  for an active table, must match its name (after trimming); a mismatch throws
+- A section or table may end with `[END]` or `[END:NAME]`. The closing name, when supplied
+  for an active block, must match its name (after trimming); a mismatch throws
   `FormatException`. Closing markers are not sections or table rows. Subsequent
   data is ignored until another section or table header. A closing marker outside
-  a table also resets the parser to that state. Without a closing marker, the
-  next section/table header or end of file ends the table. Saving uses the
-  canonical `[TABLE:NAME]` form without closing markers.
-- Section, key, and table names are **case-sensitive**. The `TABLE:`, `TBL:` and `END` keywords
+  block also resets the parser to that state. Without a closing marker, the
+  next section/table header or end of file ends the block. Saving uses the
+  canonical `[NAME]` and `[TABLE:NAME]` forms without closing markers.
+- Section, key, and table names are **case-sensitive**. The `SEC:`, `SECTION:`,
+  `TABLE:`, `TBL:` and `END` keywords
   must be uppercase. Sections and tables use separate dictionaries and may
   share a name.
 - Blank lines and lines starting with any nonempty prefix in `parComment` after

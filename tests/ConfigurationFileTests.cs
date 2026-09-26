@@ -713,8 +713,43 @@ class ConfigurationFileTests
             equal(true, Stream.CanWrite);
     }
 
+    static void sectionBlocks()
+    {
+        foreach (string Header in new string[] { "[SETTINGS]", "[SEC: SETTINGS ]", "[SECTION:SETTINGS]" }) {
+            foreach (string End in new string[] { "", "[END]", "[END:SETTINGS]", " [END: SETTINGS ] " }) {
+                string Text = Header + "\nkey=value\nflag=1\n";
+                if (End.Length > 0) Text += End + "\noutside=ignored\n";
+                ConfigurationFile Config = load(Text);
+                equal("SETTINGS", String.Join("|", Config.listSections().ToArray()));
+                equal("value", get(Config, "SETTINGS", "key"));
+                equal(true, Config.getParameter("SETTINGS", "flag", false));
+                equal("fallback", get(Config, "SETTINGS", "outside"));
+                equal(0, Config.listTables().Count);
+                Config.save("roundtrip.ini");
+                ConfigurationFile Reloaded = new ConfigurationFile("roundtrip.ini");
+                equal("value", get(Reloaded, "SETTINGS", "key"));
+                equal("SETTINGS", String.Join("|", Reloaded.listSections().ToArray()));
+            }
+        }
+        ConfigurationFile Transitions = load("[SEC:A]\nk=a\n[SECTION:B]\nk=b\n[END:B]\nignored=x\n[TBL:A]\nrow\n[END:A]\n[SECTION:EMPTY]\n[END]\n[C]\nk=c\n[END:C]\n[sec:literal]\nk=literal\n");
+        equal("a", get(Transitions, "A", "k"));
+        equal("b", get(Transitions, "B", "k"));
+        equal("fallback", get(Transitions, "B", "ignored"));
+        equal("row", Transitions.getTable("A")[0]);
+        equal(true, Transitions.checkSection("EMPTY"));
+        equal(0, Transitions.listParameters("EMPTY").Count);
+        equal("c", get(Transitions, "C", "k"));
+        equal("literal", get(Transitions, "sec:literal", "k"));
+        throws<ArgumentException>(delegate { load("[A]\n[END]\n[SEC:A]\n"); });
+        throws<ArgumentException>(delegate { load("[SEC:A]\n[SECTION:A]\n"); });
+        throws<FormatException>(delegate { load("[SECTION:A]\n[END:a]\n"); });
+        using (FileStream Stream = File.Open("config.ini", FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            equal(true, Stream.CanWrite);
+    }
+
     static int Main()
     {
+        test("SEC and SECTION headers support optional named and unnamed END", sectionBlocks);
         test("TABLE and TBL blocks support optional named and unnamed END", tableBlocks);
         test("comment recognition uses configured prefixes", configuredComments);
         test("automatic saving occurs only for newly created entries", automaticSaving);
