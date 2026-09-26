@@ -32,11 +32,13 @@ namespace ConfigurationFilesReader
         public ConfigurationFile(FileInfo FilePath)
             : this()
         {
-            if (FilePath == null)
+            if (FilePath == null) {
                 throw new ArgumentNullException("FilePath");
+            }
             this.FilePath = FilePath;
-            if (!loadFile())
+            if (!loadFile()) {
                 throw new System.Exception("Unable to open file: '" + FilePath.FullName + "'.");
+            }
         }
 
         public ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)
@@ -52,56 +54,44 @@ namespace ConfigurationFilesReader
 
         private static FileInfo combinePath(DirectoryInfo BaseDirectory, string FileName)
         {
-            if (BaseDirectory == null)
+            if (BaseDirectory == null) {
                 throw new ArgumentNullException("BaseDirectory");
-            if (FileName == null)
+            }
+            if (FileName == null) {
                 throw new ArgumentNullException("FileName");
+            }
             return new FileInfo(Path.Combine(BaseDirectory.FullName, FileName));
         }
 
         // Load the configuration file content.
         private bool loadFile()
         {
-            if (File.Exists(FilePath.FullName))
-            {
-                using (StreamReader srFile = FilePath.OpenText())
-                {
+            if (File.Exists(FilePath.FullName)) {
+                using (StreamReader srFile = FilePath.OpenText()) {
 
                     string currentParent = "";
                     SectionType reading = SectionType.None;
 
-
-                    while (!srFile.EndOfStream)
-                    {
+                    while (!srFile.EndOfStream) {
                         string currentLine = srFile.ReadLine();
                         currentLine = currentLine.Trim();
 
-                        if (currentLine.StartsWith("[TABLE:") && currentLine.EndsWith("]"))
-                        {
+                        if (currentLine.StartsWith("[TABLE:") && currentLine.EndsWith("]")) {
                             currentParent = currentLine.Substring(7, currentLine.Length - 1 - 7).Trim();
                             reading = SectionType.Table;
                             dictTables.Add(currentParent, new strTable());
-                        }
-                        else if (currentLine.StartsWith("[") && currentLine.EndsWith("]"))
-                        {
+                        } else if (currentLine.StartsWith("[") && currentLine.EndsWith("]")) {
                             currentParent = currentLine.Substring(1, currentLine.Length - 1 - 1).Trim();
                             reading = SectionType.Section;
                             dictSections.Add(currentParent, new strDictionary());
-                        }
-                        else if (currentLine.Length > 0 && currentLine.StartsWith("##"))
-                        {
-                        }
-                        else if (reading == SectionType.Section && currentLine.Length > 0)
-                        {
+                        } else if (currentLine.Length > 0 && currentLine.StartsWith("##")) {
+                        } else if (reading == SectionType.Section && currentLine.Length > 0) {
                             string[] sline = currentLine.Split(parSeparator);
-                            if (sline.Count() == 2)
-                            {
+                            if (sline.Count() == 2) {
                                 sline[1] = sline[1].Trim().TrimEnd(parEndLineDelimiter);
                                 dictSections[currentParent].Add(sline[0].Trim(), sline[1]);
                             }
-                        }
-                        else if (reading == SectionType.Table && currentLine.Length > 0)
-                        {
+                        } else if (reading == SectionType.Table && currentLine.Length > 0) {
                             currentLine = currentLine.Trim().TrimEnd(parEndLineDelimiter);
                             dictTables[currentParent].Add(currentLine);
                         }
@@ -109,9 +99,7 @@ namespace ConfigurationFilesReader
                     }
                 }
                 return true;
-            }
-            else
-            {
+            } else {
                 return false;
             }
             
@@ -134,44 +122,38 @@ namespace ConfigurationFilesReader
         // Add a default parameter in memory without replacing an existing value.
         public void addParameter(string SectionName, string ParameterName, string DefaultValue)
         {
-            if (SectionName == null)
+            if (SectionName == null) {
                 throw new ArgumentNullException("SectionName");
-            if (ParameterName == null)
+            }
+            if (ParameterName == null) {
                 throw new ArgumentNullException("ParameterName");
+            }
 
             strDictionary parameters;
-            if (!dictSections.TryGetValue(SectionName, out parameters))
-            {
+            if (!dictSections.TryGetValue(SectionName, out parameters)) {
                 parameters = new strDictionary();
                 dictSections.Add(SectionName, parameters);
             }
-            if (!parameters.ContainsKey(ParameterName))
+            if (!parameters.ContainsKey(ParameterName)) {
                 parameters.Add(ParameterName, DefaultValue);
+            }
         }
-        
+
         // Get a parameter value or use the default when missing.
         public string getParameter(string SectionName, string ParameterName, string DefaultValue )
         {
-            if (checkSection(SectionName))
-            {
+            if (checkSection(SectionName)) {
                 strDictionary sectParameters = dictSections[SectionName];
-                if (sectParameters.ContainsKey(ParameterName))
-                {
+                if (sectParameters.ContainsKey(ParameterName)) {
                     return sectParameters[ParameterName];
-                }
-                else
-                {
-                    if (autoUpdateFile)
-                    {
+                } else {
+                    if (autoUpdateFile) {
                         addParameter(SectionName, ParameterName, DefaultValue);
                     }
                     return DefaultValue;
                 }
-            }
-            else
-            {
-                if (autoUpdateFile)
-                {
+            } else {
+                if (autoUpdateFile) {
                     addParameter(SectionName, ParameterName, DefaultValue);
                 }
                 return DefaultValue;
@@ -193,12 +175,9 @@ namespace ConfigurationFilesReader
             strParameter = strParameter.Trim();
             strParameter = strParameter.Replace(',', '.');
             double OutValue;
-            try
-            {
+            try {
                 OutValue = double.Parse(strParameter, CultureInfo.InvariantCulture);
-            }
-            catch
-            {
+            } catch {
                 OutValue = DefaultValue;
             }
 
@@ -218,12 +197,9 @@ namespace ConfigurationFilesReader
             strParameter = strParameter.Trim();
             
             long OutValue;
-            try
-            {
+            try {
                 OutValue = long.Parse(strParameter, CultureInfo.InvariantCulture);
-            }
-            catch
-            {
+            } catch {
                 OutValue = DefaultValue;
             }
 
@@ -247,11 +223,13 @@ namespace ConfigurationFilesReader
         // Return a sorted snapshot of parameter names in a section.
         public List<string> listParameters(string Section)
         {
-            if (Section == null)
+            if (Section == null) {
                 throw new ArgumentNullException("Section");
+            }
             strDictionary Parameters;
-            if (!dictSections.TryGetValue(Section, out Parameters))
+            if (!dictSections.TryGetValue(Section, out Parameters)) {
                 return new List<string>();
+            }
             List<string> Names = new List<string>(Parameters.Keys);
             Names.Sort(StringComparer.Ordinal);
             return Names;
@@ -280,10 +258,11 @@ namespace ConfigurationFilesReader
         // Get a table by name.
         public strTable getTable(string tablename)
         {
-            if (dictTables.ContainsKey(tablename))
+            if (dictTables.ContainsKey(tablename)) {
                 return dictTables[tablename];
-            else
+            } else {
                 return new strTable(0);
+            }
         }
     }
 }
