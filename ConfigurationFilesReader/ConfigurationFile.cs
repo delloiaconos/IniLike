@@ -16,6 +16,7 @@ namespace ConfigurationFilesReader
     {
         private enum SectionType { None = 0, Section, Table };
 
+        public readonly string[] parComment = { "##" };
         public readonly char[] parSeparator = { '=' };
         public readonly char[] parEndLineDelimiter = { ';', ',', '.' };
         public bool autoUpdateRegistry { get; set; }
@@ -64,6 +65,17 @@ namespace ConfigurationFilesReader
             return new FileInfo(Path.Combine(BaseDirectory.FullName, FileName));
         }
 
+        // Match full-line comments against the configured prefixes.
+        private bool isComment(string Line)
+        {
+            foreach (string Prefix in parComment) {
+                if (!String.IsNullOrEmpty(Prefix) && Line.StartsWith(Prefix, StringComparison.Ordinal)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // Load the configuration file content.
         private bool loadFile()
         {
@@ -76,6 +88,9 @@ namespace ConfigurationFilesReader
                     while (!srFile.EndOfStream) {
                         string currentLine = srFile.ReadLine();
                         currentLine = currentLine.Trim();
+                        if (isComment(currentLine)) {
+                            continue;
+                        }
 
                         if (currentLine.StartsWith("[TABLE:") && currentLine.EndsWith("]")) {
                             currentParent = currentLine.Substring(7, currentLine.Length - 1 - 7).Trim();
@@ -85,7 +100,6 @@ namespace ConfigurationFilesReader
                             currentParent = currentLine.Substring(1, currentLine.Length - 1 - 1).Trim();
                             reading = SectionType.Section;
                             dictSections.Add(currentParent, new strDictionary());
-                        } else if (currentLine.Length > 0 && currentLine.StartsWith("##")) {
                         } else if (reading == SectionType.Section && currentLine.Length > 0) {
                             string[] sline = currentLine.Split(parSeparator);
                             if (sline.Count() == 2) {

@@ -27,7 +27,10 @@ second; 20; inactive;
 - Section, key, and table names are **case-sensitive**. The `TABLE:` prefix
   must be uppercase. Sections and tables use separate dictionaries and may
   share a name.
-- Blank lines and lines starting with `##` after trimming are ignored.
+- Blank lines and lines starting with any nonempty prefix in `parComment` after
+  trimming are ignored. The default prefix is `##`. Matching is ordinal and
+  case-sensitive, takes precedence over section/table headers, and applies only
+  to full-line comments. Null or empty prefix entries are ignored.
 - Leading and trailing whitespace is trimmed from lines, section names, keys,
   and values. All trailing `;`, `,`, and `.` characters are then removed from
   values and table rows. Whitespace exposed by removing these delimiters is
@@ -78,6 +81,7 @@ int port = config.getParameter("SERVER", "port", 80);
 classDiagram
     class ConfigurationFile {
         +char[] parSeparator
+        +string[] parComment
         +char[] parEndLineDelimiter
         +bool autoUpdateRegistry
         +bool autoSaveRegistry
@@ -236,6 +240,9 @@ config.autoUpdateRegistry = true;
 ```
 
 The array references cannot be reassigned, but their elements remain mutable.
+The public readonly `parComment` array contains comment prefixes (default `##`).
+Changing its elements after construction does not reparse already loaded data;
+there is no public reload method or constructor option for custom prefixes.
 They default to `=` and `; , .`. Changing them after construction does not reload or change already parsed values. 
 There is no public reload method.
 `autoUpdateRegistry` defaults to false for every constructor. Set the property to true or false at any time to enable

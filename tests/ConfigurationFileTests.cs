@@ -661,8 +661,30 @@ class ConfigurationFileTests
         equal(0, Directory.GetFiles(".", ".inilike-*.tmp").Length);
     }
 
+    static void configuredComments()
+    {
+        foreach (string Prefix in new string[] { "//", "[SKIP", null, "" }) {
+            ConfigurationFile Config = load("");
+            Config.parComment[0] = Prefix;
+            string Text = "[S]\nkey=value // literal\n##key=kept\n[TABLE:T]\n## kept\nrow // literal\n";
+            if (!String.IsNullOrEmpty(Prefix)) {
+                Text = "  " + Prefix + " before]\n[S]\n" + Prefix + " key=ignored\nkey=value // literal\n##key=kept\n[TABLE:T]\n  " + Prefix + " row]\n## kept\nrow // literal\n";
+            }
+            File.WriteAllText("config.ini", Text);
+            // Loading is constructor-only publicly; exercise the parser with a changed prefix.
+            typeof(ConfigurationFile).GetMethod("loadFile",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(Config, null);
+            equal("S", String.Join("|", Config.listSections().ToArray()));
+            equal("value // literal", get(Config, "S", "key"));
+            equal("kept", get(Config, "S", "##key"));
+            equal("## kept|row // literal", String.Join("|", Config.getTable("T").ToArray()));
+            equal(Text, File.ReadAllText("config.ini"));
+        }
+    }
+
     static int Main()
     {
+        test("comment recognition uses configured prefixes", configuredComments);
         test("automatic saving occurs only for newly created entries", automaticSaving);
         test("automatic save failures roll back new entries", automaticSaveFailures);
         test("registry dump shares save serialization and respects stream ownership", registryDump);
