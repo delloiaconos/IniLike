@@ -170,15 +170,15 @@ Concurrent changes are not synchronized.
 
 ## Build
 
-With GNU Make, MSBuild, and Mono installed, use:
+With GNU Make and MSBuild installed, build from the repository root:
 
 ```sh
-make xbuild
-make clean
-make test
+make ms-build
 ```
 
-- `build` is the default target. `clean` removes the library's entire `bin` and `obj` directories, including Debug, Release, and stale build artifacts.
+- `ms-build` is the default target: running `make` alone invokes MSBuild.
+- `x-build` explicitly uses the deprecated Mono xbuild tool: `make x-build`.
+- `clean` removes the library's entire `bin` and `obj` directories, including Debug, Release, and stale build artifacts: `make clean`.
 - `test` runs the Python test runner, which builds its own temporary copy of the library. 
   Build and test default to Release; select Debug with `CONFIGURATION=Debug`, for example `make test CONFIGURATION=Debug`. 
   Tests also require Python 3; override its command with `PYTHON=python3` if needed.
@@ -193,6 +193,10 @@ msbuild IniLike.sln /p:Configuration=Release
 The resulting assembly is
 `ConfigurationFilesReader/bin/Release/ConfigurationFilesReader.dll`.
 
+Select build executables with `make ms-build MSBUILD=/path/to/msbuild` or
+`make x-build XBUILD=/path/to/xbuild`. These variables accept executable paths,
+not commands with arguments. Both build targets support `CONFIGURATION=Debug`.
+
 ## Automated tests
 
 Prerequisites: Python 3, MSBuild, and Mono, with `msbuild`, `mcs`, and `mono` available on
@@ -201,9 +205,16 @@ Prerequisites: Python 3, MSBuild, and Mono, with `msbuild`, `mcs`, and `mono` av
 Run from the repository root:
 
 ```sh
+make test
 python3 tests/run.py
 python3 tests/run.py --configuration Debug
+python3 tests/run.py --msbuild /path/to/msbuild
 ```
+
+`make test` uses MSBuild through the runner, independently of the build target
+previously used. It forwards `CONFIGURATION` and uses `PYTHON`, but currently does
+not forward `MSBUILD` or `XBUILD`. To choose a test build executable outside `PATH`,
+invoke the runner directly with `--msbuild`. There is no automatic xbuild fallback.
 
 The runner builds the solution from source in a temporary directory and tests the resulting assembly using `tests/ConfigurationFileTests.cs`. 
 Each test runs in an isolated directory that is removed afterward. 
