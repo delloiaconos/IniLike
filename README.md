@@ -87,17 +87,31 @@ are unchanged by this rename.
 | --- | --- |
 | `ConfigurationFile(string filename)` | Loads the file immediately. Missing files and parsing errors cause exceptions. |
 | `ConfigurationFile()` | Creates an empty container without loading a file. |
-| `checkSection(string)` | Checks for a section, excluding tables. Never creates sections or writes files, including when `autoUpdateFile=true`. |
+| `checkSection(string)` | Checks for a section, excluding tables. Never creates sections or writes files. |
 | `getParameter(section, key, string defaultValue)` | Returns the stored text, or the default if the section or key is missing. |
 | `getParameter(..., bool)` | Only `TRUE`, ignoring case and surrounding whitespace, is true. Any other stored value is false, even when the default is true. |
 | `getParameter(..., double/float)` | Parses using invariant culture after replacing commas with periods. Returns the default if parsing fails. |
 | `getParameter(..., long/int)` | Parses an integer using invariant culture. Returns the default if parsing fails. The int overload parses as long and then performs an unchecked cast, so values outside the int range can wrap instead of returning the default. |
 | `getTable(name)` | Returns the mutable internal list. For a missing table, returns a new empty list that is not attached to the container. |
-| `setParameter(string sectionName, string parameterName, string value)` | Creates missing sections and keys or replaces an existing value. Stores text without parsing or trimming and preserves case-sensitive names. Never writes files, including when `autoUpdateFile=true`. |
+| `setParameter(string sectionName, string parameterName, string value)` | Creates missing sections and keys or replaces an existing value. Stores text without parsing or trimming and preserves case-sensitive names. Never writes files. |
 | `addParameter(section, key, defaultValue)` | Adds a missing parameter in memory, creating its section if needed. Preserves existing values, including null. Stores text unchanged and never writes files, regardless of `autoUpdateFile`. Null section/key names throw `ArgumentNullException`; empty names are allowed. |
 
 
 ## Limitations
+
+Parser settings are exposed as public readonly fields:
+
+```csharp
+char[] separators = config.parSeparator;
+char[] delimiters = config.parEndLineDelimiter;
+bool automaticUpdates = config.autoUpdateFile;
+```
+
+The array references cannot be reassigned, but their elements remain mutable.
+They default to `=` and `; , .`. Changing them after construction does not reload
+or change already parsed values. There is no public reload method.
+`autoUpdateFile` is initialized to false and cannot be reassigned by callers.
+There are no accessor properties or getter/setter methods for these fields.
 
 `setParameter` supports in-memory overrides. Subsequent `getParameter` calls
 use the new values and the usual type conversions. Changes are not persisted
@@ -106,17 +120,10 @@ to disk.
 `addParameter` adds defaults only when a parameter is absent; `setParameter`
 also replaces existing values. Neither method writes files.
 
-The former public `UpdateFile` field is now private as `autoUpdateFile`; use
-`getAutoUpdateFile()` to read it. The delimiter fields are also private; modifying
-arrays returned by their getters does not change the parser configuration.
-There are no public setters or reload method.
-
-Internally, `autoUpdateFile=true` makes getters store missing parameters and their default values
-in memory through `addParameter`, creating the section if necessary. Subsequent
-reads return the stored value even if a different default is supplied. With
-`autoUpdateFile=false` (the default), getters do not add missing parameters.
-`checkSection` remains a pure existence check in both modes. No operation saves
-these changes to disk; the legacy writes to files named after sections are removed.
+With the current constructors, `autoUpdateFile` is always false: getters return
+missing defaults without storing them. Use `addParameter` or `setParameter` to
+change data in memory. `checkSection` remains a pure existence check. No operation
+saves changes to disk.
 
 File readers are disposed through `using` blocks, including when parsing throws
 an exception. Concurrent changes are not synchronized.
@@ -162,7 +169,7 @@ python3 tests/run.py --configuration Debug
 
 The runner builds the solution from source in a temporary directory and tests
 the resulting assembly using `tests/ConfigurationFileTests.cs`. Each test runs
-in an isolated directory that is removed afterward. Tests verify that the internal `autoUpdateFile` flag
+in an isolated directory that is removed afterward. Tests verify that the readonly `autoUpdateFile` flag
 does not cause file writes. Build artifacts are kept outside the repository. The command
 prints a result summary and exits with a nonzero status if a build or test fails.
 
@@ -174,4 +181,4 @@ The suite covers:
   under three cultures, including integer boundaries and overflow behavior.
 - Empty files, missing files, and duplicate sections, tables, and keys.
 - In-memory overrides and source file preservation.
-- The documented behavior of `addParameter`, the internal `autoUpdateFile` flag, and delimiter getters.
+- The documented behavior of `addParameter`, the readonly `autoUpdateFile` flag, and mutable elements of readonly delimiter arrays.

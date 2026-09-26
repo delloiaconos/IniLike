@@ -14,17 +14,16 @@ namespace ConfigurationFilesReader
 
     public class ConfigurationFile
     {
-        private enum SectionType { None = 0,Section, Table };
+        private const enum SectionType { None = 0, Section, Table };
 
-        private char[] parSeparator = { '=' };
-        private char[] parEndLineDelimiter = { ';', ',', '.' };
+        public readonly char[] parSeparator = { '=' };
+        public readonly char[] parEndLineDelimiter = { ';', ',', '.' };
+        public readonly bool autoUpdateFile = false;
 
         private string FileName;
         private Dictionary<string, strDictionary> dictSections;
         private Dictionary<string, strTable> dictTables;
         
-        private bool autoUpdateFile = false;
-
         public ConfigurationFile(string filename)
         {
             FileName = filename;

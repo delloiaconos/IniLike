@@ -61,21 +61,10 @@ class CompatibilityProbe
             foreach(Type type in new[]{ini,ui})
             {
                 object empty=Activator.CreateInstance(type);
-                type.GetField("UpdateFile").SetValue(empty,true);
+
                 get(empty,"unexpected-section-file","missing");
-                if(type==ini)
-                    require(!File.Exists("unexpected-section-file"),"IniLike getters must not write files");
-                else if(File.Exists("unexpected-section-file"))
-                {
-                    Console.WriteLine("NOTE: OperatorUI retains the legacy UpdateFile write side effect; IniLike does not.");
-                    File.Delete("unexpected-section-file");
-                }
-                bool exists=(bool)call(empty,"checkSection",new[]{typeof(string)},"unexpected-section-file");
-                if(type==ini) require(exists,"getter must store default section in memory with UpdateFile enabled");
-                if(type==ini)
-                    require(!File.Exists("unexpected-section-file"),"IniLike section checks must not write files");
-                else if(File.Exists("unexpected-section-file"))
-                    File.Delete("unexpected-section-file");
+                require(!File.Exists("unexpected-section-file"),"default getters must not write files");
+                require(!(bool)call(empty,"checkSection",new[]{typeof(string)},"unexpected-section-file"),"default getters must not create sections");
                 string duplicate=Path.Combine(folder,"duplicate-"+type.Assembly.GetName().Name+".ini");File.WriteAllText(duplicate,"[S]\nk=1;\nk=2;\n");
                 try{Activator.CreateInstance(type,new object[]{duplicate});throw new Exception("Duplicate accepted");}
                 catch(TargetInvocationException ex){require(ex.InnerException is ArgumentException,"unexpected duplicate error");}
@@ -96,14 +85,14 @@ class CompatibilityProbe
                 require(get(current,"DATA","Name")=="fallback","setter key case sensitivity");
                 require(File.ReadAllText(input)==text,"INI file changed");
                 object empty=Activator.CreateInstance(type);
-                type.GetField("UpdateFile").SetValue(empty,true);
+
                 call(empty,"setParameter",setter,"runtime-section","key","value");
                 require((bool)call(empty,"checkSection",new[]{typeof(string)},"runtime-section"),"setter creates section");
                 require(get(empty,"runtime-section","key")=="value","setter on empty instance");
-                require(!File.Exists("runtime-section"),"setter must not write with UpdateFile enabled");
-                type.GetField("UpdateFile").SetValue(current,true);
+                require(!File.Exists("runtime-section"),"setter must not write with default settings");
+
                 call(current,"setParameter",setter,"runtime-section","key","value");
-                require(!File.Exists("runtime-section")&&File.ReadAllText(input)==text,"loaded setter must not write with UpdateFile enabled");
+                require(!File.Exists("runtime-section")&&File.ReadAllText(input)==text,"loaded setter must not write with default settings");
             }
             Console.WriteLine("PASS: IniLike and OperatorUI parsing and setParameter behavior match; overrides do not write files.");
             return 0;
