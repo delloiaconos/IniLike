@@ -682,8 +682,40 @@ class ConfigurationFileTests
         }
     }
 
+    static void tableBlocks()
+    {
+        string[] Rows = {
+            "WARMUP\t\t;WARMUP_COMMANDS\t;6  ;conversione_warm.py\t;\t\t;FALSE",
+            "STOPPING\t;STOPPING_COMMANDS\t;1  ;conversione_warm.py\t; \t\t;FALSE",
+            "STEPTEST \t;STEPTEST_COMMANDS\t;1  ;conversione_step.py\t;POSTTEST       ;TRUE"
+        };
+        foreach (string Keyword in new string[] { "TABLE", "TBL" }) {
+            foreach (string End in new string[] { "", "[END]", "[END:TEST_PHASES]", " [END: TEST_PHASES ] " }) {
+                string Text = "[" + Keyword + ":TEST_PHASES]\n" + String.Join("\n", Rows) + "\n";
+                if (End.Length > 0) Text += End + "\nignored;row\nignored=value\n";
+                ConfigurationFile Config = load(Text);
+                equal(String.Join("\n", Rows), String.Join("\n", Config.getTable("TEST_PHASES").ToArray()));
+                equal(0, Config.listSections().Count);
+                equal("TEST_PHASES", String.Join("|", Config.listTables().ToArray()));
+                Config.save("roundtrip.ini");
+                equal(String.Join("\n", Rows), String.Join("\n", new ConfigurationFile("roundtrip.ini").getTable("TEST_PHASES").ToArray()));
+            }
+        }
+        ConfigurationFile Transitions = load("[TBL:A]\nrow\n[S]\nk=v\n[TABLE:B]\n[END:B]\n[TBL:C]\nlast\n[END]\n[S2]\nk=v2\n");
+        equal("row", Transitions.getTable("A")[0]);
+        equal("v", get(Transitions, "S", "k"));
+        equal(0, Transitions.getTable("B").Count);
+        equal("last", Transitions.getTable("C")[0]);
+        equal("v2", get(Transitions, "S2", "k"));
+        throws<ArgumentException>(delegate { load("[TABLE:A]\n[END]\n[TBL:A]\n"); });
+        throws<FormatException>(delegate { load("[TBL:A]\n[END:a]\n"); });
+        using (FileStream Stream = File.Open("config.ini", FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            equal(true, Stream.CanWrite);
+    }
+
     static int Main()
     {
+        test("TABLE and TBL blocks support optional named and unnamed END", tableBlocks);
         test("comment recognition uses configured prefixes", configuredComments);
         test("automatic saving occurs only for newly created entries", automaticSaving);
         test("automatic save failures roll back new entries", automaticSaveFailures);

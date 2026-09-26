@@ -92,8 +92,20 @@ namespace ConfigurationFilesReader
                             continue;
                         }
 
-                        if (currentLine.StartsWith("[TABLE:") && currentLine.EndsWith("]")) {
-                            currentParent = currentLine.Substring(7, currentLine.Length - 1 - 7).Trim();
+                        if (currentLine == "[END]" ||
+                            (currentLine.StartsWith("[END:", StringComparison.Ordinal) && currentLine.EndsWith("]", StringComparison.Ordinal))) {
+                            if (reading == SectionType.Table && currentLine != "[END]") {
+                                string TableName = currentLine.Substring(5, currentLine.Length - 6).Trim();
+                                if (!String.Equals(TableName, currentParent, StringComparison.Ordinal)) {
+                                    throw new FormatException("Table end label does not match the current table: '" + currentParent + "'.");
+                                }
+                            }
+                            currentParent = "";
+                            reading = SectionType.None;
+                        } else if ((currentLine.StartsWith("[TABLE:", StringComparison.Ordinal) ||
+                                    currentLine.StartsWith("[TBL:", StringComparison.Ordinal)) && currentLine.EndsWith("]", StringComparison.Ordinal)) {
+                            int PrefixLength = currentLine.StartsWith("[TABLE:", StringComparison.Ordinal) ? 7 : 5;
+                            currentParent = currentLine.Substring(PrefixLength, currentLine.Length - PrefixLength - 1).Trim();
                             reading = SectionType.Table;
                             dictTables.Add(currentParent, new strTable());
                         } else if (currentLine.StartsWith("[") && currentLine.EndsWith("]")) {
