@@ -43,6 +43,7 @@ namespace ConfigurationFilesReader
             
         }
 
+        // Load the configuration file content.
         private bool loadFile()
         {
             if (File.Exists(FileName))
@@ -61,27 +62,21 @@ namespace ConfigurationFilesReader
 
                         if (currentLine.StartsWith("[TABLE:") && currentLine.EndsWith("]"))
                         {
-                            // Read the table name.
                             currentParent = currentLine.Substring(7, currentLine.Length - 1 - 7).Trim();
                             reading = SectionType.Table;
-                            // Create the table.
                             dictTables.Add(currentParent, new strTable());
                         }
                         else if (currentLine.StartsWith("[") && currentLine.EndsWith("]"))
                         {
-                            // Read the section name.
                             currentParent = currentLine.Substring(1, currentLine.Length - 1 - 1).Trim();
                             reading = SectionType.Section;
-                            // Create the section.
                             dictSections.Add(currentParent, new strDictionary());
                         }
                         else if (currentLine.Length > 0 && currentLine.StartsWith("##"))
                         {
-                            // Ignore full-line comments.
                         }
                         else if (reading == SectionType.Section && currentLine.Length > 0)
                         {
-                            // Add the parameter.
                             string[] sline = currentLine.Split(parSeparator);
                             if (sline.Count() == 2)
                             {
@@ -91,7 +86,6 @@ namespace ConfigurationFilesReader
                         }
                         else if (reading == SectionType.Table && currentLine.Length > 0)
                         {
-                            // Add the table row.
                             currentLine = currentLine.Trim().TrimEnd(parEndLineDelimiter);
                             dictTables[currentParent].Add(currentLine);
                         }
@@ -109,12 +103,13 @@ namespace ConfigurationFilesReader
 
         
 
+        // Check whether the section exists.
         public bool checkSection(string SectionName)
         {
             return dictSections.ContainsKey(SectionName);
         }
 
-        // Runtime override only: the source INI is never written.
+        // Set a parameter in memory only.
         public void setParameter(string sectionName, string parameterName, string value)
         {
             if (!dictSections.ContainsKey(sectionName))
@@ -122,7 +117,7 @@ namespace ConfigurationFilesReader
             dictSections[sectionName][parameterName] = value;
         }
 
-        // Add a default in memory without replacing an existing value.
+        // Add a default parameter in memory without replacing an existing value.
         public void addParameter(string SectionName, string ParameterName, string DefaultValue)
         {
             if (SectionName == null)
@@ -142,6 +137,7 @@ namespace ConfigurationFilesReader
 
 
 
+        // Get a parameter value or use the default when missing.
         public string getParameter(string SectionName, string ParameterName, string DefaultValue )
         {
             if (checkSection(SectionName))
@@ -170,6 +166,7 @@ namespace ConfigurationFilesReader
             }
         }
 
+        // Get a boolean parameter.
         public bool getParameter(string SectionName, string ParameterName, bool DefaultValue)
         {
             string strParameter = getParameter(SectionName, ParameterName, DefaultValue ? "TRUE" : "FALSE");
@@ -177,6 +174,7 @@ namespace ConfigurationFilesReader
             return strParameter.CompareTo("TRUE") == 0 ? true : false;
         }
 
+        // Get a double parameter.
         public double getParameter(string SectionName, string ParameterName, double DefaultValue)
         {
             string strParameter = getParameter(SectionName, ParameterName, DefaultValue.ToString(CultureInfo.InvariantCulture));
@@ -195,11 +193,13 @@ namespace ConfigurationFilesReader
             return OutValue;
         }
 
+        // Get a float parameter.
         public float getParameter(string SectionName, string ParameterName, float DefaultValue)
         {
             return (float)((double)getParameter(SectionName, ParameterName, (double)DefaultValue));
         }
 
+        // Get a long parameter.
         public long getParameter(string SectionName, string ParameterName, long DefaultValue)
         {
             string strParameter = getParameter(SectionName, ParameterName, DefaultValue.ToString(CultureInfo.InvariantCulture));
@@ -218,11 +218,13 @@ namespace ConfigurationFilesReader
             return OutValue;
         }
 
+        // Get an integer parameter.
         public int getParameter(string SectionName, string ParameterName, int DefaultValue)
         {
             return (int)((long)getParameter(SectionName, ParameterName, (long)DefaultValue));
         }
 
+        // Get a table by name.
         public strTable getTable(string tablename)
         {
             if (dictTables.ContainsKey(tablename))
