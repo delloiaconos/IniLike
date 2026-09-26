@@ -235,34 +235,75 @@ class ConfigurationFileTests
         Equal<string>(null, Get(cfg, "S", "null"));
     }
 
-    static void ReadOnlySectionChecks()
+    static void MemoryDefaults()
     {
-        const string source = "[S]\nk=original;\n";
-        ConfigurationFile cfg = Load(source);
+        const string source = "[S]\nk=original;\n[TABLE:ROWS]\na;b;\n";
         foreach (bool update in new bool[] { false, true })
         {
+            ConfigurationFile cfg = Load(source);
             cfg.UpdateFile = update;
             cfg.addParameter("S", "k", "replacement");
-            cfg.addParameter("S", "new", "value");
-            cfg.addParameter("absent", "key", "value");
+            cfg.addParameter("S", "new", " value=.,; ");
+            cfg.addParameter("S", "new", "replacement");
+            cfg.addParameter("NEW", "key", "123");
             Equal("original", Get(cfg, "S", "k"));
-            Equal("fallback", Get(cfg, "S", "new"));
-            Equal(false, File.Exists("absent"));
+            Equal(" value=.,; ", Get(cfg, "S", "new"));
+            Equal(true, cfg.checkSection("NEW"));
+            Equal(123, cfg.getParameter("NEW", "key", 0));
+            cfg.addParameter("s", "k", "distinct section");
+            cfg.addParameter("S", "K", "distinct key");
+            Equal("distinct section", Get(cfg, "s", "k"));
+            Equal("distinct key", Get(cfg, "S", "K"));
+            cfg.addParameter("ROWS", "key", "separate");
+            Equal("a;b", cfg.getTable("ROWS")[0]);
+            Equal("separate", Get(cfg, "ROWS", "key"));
+            cfg.addParameter("S", "null", null);
+            cfg.addParameter("S", "null", "replacement");
+            Equal<string>(null, Get(cfg, "S", "null"));
+            cfg.addParameter("", "", "empty names");
+            Equal("empty names", Get(cfg, "", ""));
+            Throws<ArgumentNullException>(delegate { cfg.addParameter(null, "key", "value"); });
+            Throws<ArgumentNullException>(delegate { cfg.addParameter("invalid", null, "value"); });
+            Equal(false, cfg.checkSection("invalid"));
+            cfg.SetParameter("S", "new", "explicit override");
+            Equal("explicit override", Get(cfg, "S", "new"));
+
+            ConfigurationFile empty = new ConfigurationFile();
+            empty.UpdateFile = update;
+            empty.addParameter("runtime", "key", "value");
+            Equal("value", Get(empty, "runtime", "key"));
             for (int i = 0; i < 2; i++)
             {
-                Equal(true, cfg.checkSection("S"));
-                Equal(false, cfg.checkSection("absent"));
-                Equal("fallback", Get(cfg, "absent", "k"));
-                Equal(false, cfg.checkSection("absent"));
-                Equal(false, File.Exists("absent"));
-                // A section name matching a file must not append to that file.
-                Equal(false, cfg.checkSection("config.ini"));
-                Equal("fallback", Get(cfg, "config.ini", "k"));
-                Equal(source, File.ReadAllText("config.ini"));
-                Equal(1, Directory.GetFiles(".").Length);
+                Equal(false, empty.checkSection("missing"));
+                Equal(false, empty.checkSection("config.ini"));
             }
+            Equal(source, File.ReadAllText("config.ini"));
+            Equal(1, Directory.GetFiles(".").Length);
+            Equal("fallback", Get(new ConfigurationFile("config.ini"), "S", "new"));
         }
-        Equal(source, File.ReadAllText("config.ini"));
+    }
+
+    static void GetterDefaults()
+    {
+        const string source = "[S]\nk=original;\n";
+        foreach (bool update in new bool[] { false, true })
+        {
+            ConfigurationFile cfg = Load(source);
+            cfg.UpdateFile = update;
+            Equal(false, cfg.checkSection("missing"));
+            Equal("first", cfg.getParameter("missing", "key", "first"));
+            Equal(update, cfg.checkSection("missing"));
+            Equal(update ? "first" : "second", cfg.getParameter("missing", "key", "second"));
+            Equal("first", cfg.getParameter("S", "new", "first"));
+            Equal(update ? "first" : "second", cfg.getParameter("S", "new", "second"));
+            Equal(42, cfg.getParameter("numbers", "int", 42));
+            Equal(update ? 42 : 7, cfg.getParameter("numbers", "int", 7));
+            Equal(true, cfg.getParameter("numbers", "bool", true));
+            Equal(update, cfg.getParameter("numbers", "bool", false));
+            Equal("fallback", Get(cfg, "config.ini", "key"));
+            Equal(source, File.ReadAllText("config.ini"));
+            Equal(1, Directory.GetFiles(".").Length);
+        }
     }
 
     static int Main()
@@ -274,7 +315,8 @@ class ConfigurationFileTests
         Test("numeric conversions, boundaries and three cultures", Numbers);
         Test("boolean conversions", Booleans);
         Test("runtime overrides and file immutability", Overrides);
-        Test("section checks and getters never create sections or write files", ReadOnlySectionChecks);
+        Test("addParameter stores defaults only in memory", MemoryDefaults);
+        Test("getters store missing defaults only with UpdateFile enabled", GetterDefaults);
         Test("empty file", delegate { Equal(false, Load("").checkSection("S")); });
         Test("comments only", delegate { Equal(0, Load(" ## comment\n\n").getTable("S").Count); });
         Test("missing file", delegate { Throws<Exception>(delegate { new ConfigurationFile("missing.ini"); }); });

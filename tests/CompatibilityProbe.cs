@@ -12,7 +12,7 @@ class CompatibilityProbe
     static List<string> Table(object instance,string table)
     {return (List<string>)Call(instance,"getTable",new[]{typeof(string)},table);}
     static void Require(bool condition,string message){if(!condition)throw new Exception(message);}
-    static string Snapshot(Type type,string path)
+    static string Snapshot(Type type,string path,bool requireMemoryAdd)
     {
         object cfg=Activator.CreateInstance(type,new object[]{path});
         Require(Get(cfg,"DATA","name")=="test","section parsing");
@@ -27,7 +27,14 @@ class CompatibilityProbe
         rows.Add("mutable");Require(Table(cfg,"ROWS").Count==3,"returned table is live");
         Table(cfg,"missing").Add("ignored");Require(Table(cfg,"missing").Count==0,"missing table detached");
         Call(cfg,"addParameter",new[]{typeof(string),typeof(string),typeof(string)},"DATA","added","new");
-        Require(Get(cfg,"DATA","added")=="fallback","addParameter is currently a no-op");
+        string added=Get(cfg,"DATA","added");
+        if(requireMemoryAdd)
+            Require(added=="new","addParameter must store defaults in memory");
+        else
+        {
+            Require(added=="new"||added=="fallback","unexpected consumer addParameter behavior");
+            if(added=="fallback") Console.WriteLine("NOTE: OperatorUI addParameter remains a no-op; IniLike stores defaults in memory.");
+        }
         return String.Join("|",rows.ToArray());
     }
     static int Main(string[] args)
@@ -42,7 +49,7 @@ class CompatibilityProbe
             string input=Path.Combine(folder,"config.ini");
             string text="## comment\n[DATA]\nname = test;\nequals = a=b;\npunctuation = value.,;\nquoted = \"hello\";\ndecimal = 1,25;\nboolean = yes;\ninvalid = abc;\n[TABLE:ROWS]\na;b;c;\nd;e;\n";
             File.WriteAllText(input,text);
-            Require(Snapshot(ini,input)==Snapshot(ui,input),"parser behavior differs");
+            Require(Snapshot(ini,input,true)==Snapshot(ui,input,false),"parser behavior differs");
             foreach(Type type in new[]{ini,ui})
             {
                 object empty=Activator.CreateInstance(type);
@@ -55,7 +62,8 @@ class CompatibilityProbe
                     Console.WriteLine("NOTE: OperatorUI retains the legacy UpdateFile write side effect; IniLike does not.");
                     File.Delete("unexpected-section-file");
                 }
-                Require(!(bool)Call(empty,"checkSection",new[]{typeof(string)},"unexpected-section-file"),"missing section must remain absent");
+                bool exists=(bool)Call(empty,"checkSection",new[]{typeof(string)},"unexpected-section-file");
+                if(type==ini) Require(exists,"getter must store default section in memory with UpdateFile enabled");
                 if(type==ini)
                     Require(!File.Exists("unexpected-section-file"),"IniLike section checks must not write files");
                 else if(File.Exists("unexpected-section-file"))

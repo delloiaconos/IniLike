@@ -122,9 +122,22 @@ namespace ConfigurationFilesReader
             dictSections[sectionName][parameterName] = value;
         }
 
+        // Add a default in memory without replacing an existing value.
         public void addParameter(string SectionName, string ParameterName, string DefaultValue)
         {
-            
+            if (SectionName == null)
+                throw new ArgumentNullException("SectionName");
+            if (ParameterName == null)
+                throw new ArgumentNullException("ParameterName");
+
+            strDictionary parameters;
+            if (!dictSections.TryGetValue(SectionName, out parameters))
+            {
+                parameters = new strDictionary();
+                dictSections.Add(SectionName, parameters);
+            }
+            if (!parameters.ContainsKey(ParameterName))
+                parameters.Add(ParameterName, DefaultValue);
         }
 
 
