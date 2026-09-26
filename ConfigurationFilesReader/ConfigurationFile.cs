@@ -61,27 +61,27 @@ namespace ConfigurationFilesReader
 
                         if (currentLine.StartsWith("[TABLE:") && currentLine.EndsWith("]"))
                         {
-                            //Ho trovato una TABLE
+                            // Read the table name.
                             currentParent = currentLine.Substring(7, currentLine.Length - 1 - 7).Trim();
                             reading = SectionType.Table;
-                            //Creo la table...
+                            // Create the table.
                             dictTables.Add(currentParent, new strTable());
                         }
                         else if (currentLine.StartsWith("[") && currentLine.EndsWith("]"))
                         {
-                            // Ho trovato una sezione
+                            // Read the section name.
                             currentParent = currentLine.Substring(1, currentLine.Length - 1 - 1).Trim();
                             reading = SectionType.Section;
-                            // Creo la sezione
+                            // Create the section.
                             dictSections.Add(currentParent, new strDictionary());
                         }
                         else if (currentLine.Length > 0 && currentLine.StartsWith("##"))
                         {
-                            // Ho trovato un commento tra le righe....
+                            // Ignore full-line comments.
                         }
                         else if (reading == SectionType.Section && currentLine.Length > 0)
                         {
-                            // Aggiungo il parametro
+                            // Add the parameter.
                             string[] sline = currentLine.Split(parSeparator);
                             if (sline.Count() == 2)
                             {
@@ -91,7 +91,7 @@ namespace ConfigurationFilesReader
                         }
                         else if (reading == SectionType.Table && currentLine.Length > 0)
                         {
-                            // Aggiungo il parametro
+                            // Add the table row.
                             currentLine = currentLine.Trim().TrimEnd(parEndLineDelimiter);
                             dictTables[currentParent].Add(currentLine);
                         }
@@ -115,7 +115,7 @@ namespace ConfigurationFilesReader
         }
 
         // Runtime override only: the source INI is never written.
-        public void SetParameter(string sectionName, string parameterName, string value)
+        public void setParameter(string sectionName, string parameterName, string value)
         {
             if (!dictSections.ContainsKey(sectionName))
                 dictSections.Add(sectionName, new strDictionary());

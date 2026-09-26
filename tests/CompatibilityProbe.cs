@@ -5,34 +5,42 @@ using System.Collections.Generic;
 
 class CompatibilityProbe
 {
-    static object Call(object instance, string name, Type[] types, params object[] args)
-    {return instance.GetType().GetMethod(name,types).Invoke(instance,args);}
-    static string Get(object instance,string section,string key)
-    {return (string)Call(instance,"getParameter",new[]{typeof(string),typeof(string),typeof(string)},section,key,"fallback");}
-    static List<string> Table(object instance,string table)
-    {return (List<string>)Call(instance,"getTable",new[]{typeof(string)},table);}
-    static void Require(bool condition,string message){if(!condition)throw new Exception(message);}
-    static string Snapshot(Type type,string path,bool requireMemoryAdd)
+    static object call(object instance, string name, Type[] types, params object[] args)
+    {
+        Type type=instance.GetType();
+        MethodInfo method=type.GetMethod(name,types);
+        // Older consumer assemblies may still expose PascalCase method names.
+        if(method==null)
+            method=type.GetMethod(Char.ToUpperInvariant(name[0])+name.Substring(1),types);
+        if(method==null) throw new MissingMethodException(type.FullName,name);
+        return method.Invoke(instance,args);
+    }
+    static string get(object instance,string section,string key)
+    {return (string)call(instance,"getParameter",new[]{typeof(string),typeof(string),typeof(string)},section,key,"fallback");}
+    static List<string> table(object instance,string table)
+    {return (List<string>)call(instance,"getTable",new[]{typeof(string)},table);}
+    static void require(bool condition,string message){if(!condition)throw new Exception(message);}
+    static string snapshot(Type type,string path,bool requireMemoryAdd)
     {
         object cfg=Activator.CreateInstance(type,new object[]{path});
-        Require(Get(cfg,"DATA","name")=="test","section parsing");
-        Require(Get(cfg,"DATA","equals")=="fallback","multiple equals must be ignored by current parser");
-        Require(Get(cfg,"data","name")=="fallback","case sensitivity");
-        Require(Get(cfg,"DATA","punctuation")=="value","trailing delimiter trimming");
-        Require(Get(cfg,"DATA","quoted")=="\"hello\"","quotes are literal");
-        Require((double)Call(cfg,"getParameter",new[]{typeof(string),typeof(string),typeof(double)},"DATA","decimal",0.0)==1.25,"decimal comma");
-        Require(!(bool)Call(cfg,"getParameter",new[]{typeof(string),typeof(string),typeof(bool)},"DATA","boolean",true),"non TRUE boolean");
-        Require((int)Call(cfg,"getParameter",new[]{typeof(string),typeof(string),typeof(int)},"DATA","invalid",42)==42,"invalid number default");
-        List<string> rows=Table(cfg,"ROWS");Require(rows.Count==2&&rows[0]=="a;b;c"&&rows[1]=="d;e", "table rows");
-        rows.Add("mutable");Require(Table(cfg,"ROWS").Count==3,"returned table is live");
-        Table(cfg,"missing").Add("ignored");Require(Table(cfg,"missing").Count==0,"missing table detached");
-        Call(cfg,"addParameter",new[]{typeof(string),typeof(string),typeof(string)},"DATA","added","new");
-        string added=Get(cfg,"DATA","added");
+        require(get(cfg,"DATA","name")=="test","section parsing");
+        require(get(cfg,"DATA","equals")=="fallback","multiple equals must be ignored by current parser");
+        require(get(cfg,"data","name")=="fallback","case sensitivity");
+        require(get(cfg,"DATA","punctuation")=="value","trailing delimiter trimming");
+        require(get(cfg,"DATA","quoted")=="\"hello\"","quotes are literal");
+        require((double)call(cfg,"getParameter",new[]{typeof(string),typeof(string),typeof(double)},"DATA","decimal",0.0)==1.25,"decimal comma");
+        require(!(bool)call(cfg,"getParameter",new[]{typeof(string),typeof(string),typeof(bool)},"DATA","boolean",true),"non TRUE boolean");
+        require((int)call(cfg,"getParameter",new[]{typeof(string),typeof(string),typeof(int)},"DATA","invalid",42)==42,"invalid number default");
+        List<string> rows=table(cfg,"ROWS");require(rows.Count==2&&rows[0]=="a;b;c"&&rows[1]=="d;e", "table rows");
+        rows.Add("mutable");require(table(cfg,"ROWS").Count==3,"returned table is live");
+        table(cfg,"missing").Add("ignored");require(table(cfg,"missing").Count==0,"missing table detached");
+        call(cfg,"addParameter",new[]{typeof(string),typeof(string),typeof(string)},"DATA","added","new");
+        string added=get(cfg,"DATA","added");
         if(requireMemoryAdd)
-            Require(added=="new","addParameter must store defaults in memory");
+            require(added=="new","addParameter must store defaults in memory");
         else
         {
-            Require(added=="new"||added=="fallback","unexpected consumer addParameter behavior");
+            require(added=="new"||added=="fallback","unexpected consumer addParameter behavior");
             if(added=="fallback") Console.WriteLine("NOTE: OperatorUI addParameter remains a no-op; IniLike stores defaults in memory.");
         }
         return String.Join("|",rows.ToArray());
@@ -49,55 +57,55 @@ class CompatibilityProbe
             string input=Path.Combine(folder,"config.ini");
             string text="## comment\n[DATA]\nname = test;\nequals = a=b;\npunctuation = value.,;\nquoted = \"hello\";\ndecimal = 1,25;\nboolean = yes;\ninvalid = abc;\n[TABLE:ROWS]\na;b;c;\nd;e;\n";
             File.WriteAllText(input,text);
-            Require(Snapshot(ini,input,true)==Snapshot(ui,input,false),"parser behavior differs");
+            require(snapshot(ini,input,true)==snapshot(ui,input,false),"parser behavior differs");
             foreach(Type type in new[]{ini,ui})
             {
                 object empty=Activator.CreateInstance(type);
                 type.GetField("UpdateFile").SetValue(empty,true);
-                Get(empty,"unexpected-section-file","missing");
+                get(empty,"unexpected-section-file","missing");
                 if(type==ini)
-                    Require(!File.Exists("unexpected-section-file"),"IniLike getters must not write files");
+                    require(!File.Exists("unexpected-section-file"),"IniLike getters must not write files");
                 else if(File.Exists("unexpected-section-file"))
                 {
                     Console.WriteLine("NOTE: OperatorUI retains the legacy UpdateFile write side effect; IniLike does not.");
                     File.Delete("unexpected-section-file");
                 }
-                bool exists=(bool)Call(empty,"checkSection",new[]{typeof(string)},"unexpected-section-file");
-                if(type==ini) Require(exists,"getter must store default section in memory with UpdateFile enabled");
+                bool exists=(bool)call(empty,"checkSection",new[]{typeof(string)},"unexpected-section-file");
+                if(type==ini) require(exists,"getter must store default section in memory with UpdateFile enabled");
                 if(type==ini)
-                    Require(!File.Exists("unexpected-section-file"),"IniLike section checks must not write files");
+                    require(!File.Exists("unexpected-section-file"),"IniLike section checks must not write files");
                 else if(File.Exists("unexpected-section-file"))
                     File.Delete("unexpected-section-file");
                 string duplicate=Path.Combine(folder,"duplicate-"+type.Assembly.GetName().Name+".ini");File.WriteAllText(duplicate,"[S]\nk=1;\nk=2;\n");
                 try{Activator.CreateInstance(type,new object[]{duplicate});throw new Exception("Duplicate accepted");}
-                catch(TargetInvocationException ex){Require(ex.InnerException is ArgumentException,"unexpected duplicate error");}
+                catch(TargetInvocationException ex){require(ex.InnerException is ArgumentException,"unexpected duplicate error");}
             }
             Type[] setter={typeof(string),typeof(string),typeof(string)};
             foreach(Type type in new[]{ini,ui})
             {
-                Require(type.GetMethod("SetParameter",setter)!=null,"SetParameter missing");
+                require(type.GetMethod("setParameter",setter)!=null||type.GetMethod("SetParameter",setter)!=null,"setParameter missing");
                 object current=Activator.CreateInstance(type,new object[]{input});
-                Call(current,"SetParameter",setter,"DATA","name","override");
-                Call(current,"SetParameter",setter,"DATA","added","123");
-                Call(current,"SetParameter",setter,"NEW","key","created");
-                Require(Get(current,"DATA","name")=="override"&&Get(current,"NEW","key")=="created","runtime override");
-                Require((int)Call(current,"getParameter",new[]{typeof(string),typeof(string),typeof(int)},"DATA","added",0)==123,"typed override read");
-                Call(current,"SetParameter",setter,"DATA","name"," last=.,; ");
-                Require(Get(current,"DATA","name")==" last=.,; ","last override wins without parsing or trimming");
-                Require(Get(current,"data","name")=="fallback","setter section case sensitivity");
-                Require(Get(current,"DATA","Name")=="fallback","setter key case sensitivity");
-                Require(File.ReadAllText(input)==text,"INI file changed");
+                call(current,"setParameter",setter,"DATA","name","override");
+                call(current,"setParameter",setter,"DATA","added","123");
+                call(current,"setParameter",setter,"NEW","key","created");
+                require(get(current,"DATA","name")=="override"&&get(current,"NEW","key")=="created","runtime override");
+                require((int)call(current,"getParameter",new[]{typeof(string),typeof(string),typeof(int)},"DATA","added",0)==123,"typed override read");
+                call(current,"setParameter",setter,"DATA","name"," last=.,; ");
+                require(get(current,"DATA","name")==" last=.,; ","last override wins without parsing or trimming");
+                require(get(current,"data","name")=="fallback","setter section case sensitivity");
+                require(get(current,"DATA","Name")=="fallback","setter key case sensitivity");
+                require(File.ReadAllText(input)==text,"INI file changed");
                 object empty=Activator.CreateInstance(type);
                 type.GetField("UpdateFile").SetValue(empty,true);
-                Call(empty,"SetParameter",setter,"runtime-section","key","value");
-                Require((bool)Call(empty,"checkSection",new[]{typeof(string)},"runtime-section"),"setter creates section");
-                Require(Get(empty,"runtime-section","key")=="value","setter on empty instance");
-                Require(!File.Exists("runtime-section"),"setter must not write with UpdateFile enabled");
+                call(empty,"setParameter",setter,"runtime-section","key","value");
+                require((bool)call(empty,"checkSection",new[]{typeof(string)},"runtime-section"),"setter creates section");
+                require(get(empty,"runtime-section","key")=="value","setter on empty instance");
+                require(!File.Exists("runtime-section"),"setter must not write with UpdateFile enabled");
                 type.GetField("UpdateFile").SetValue(current,true);
-                Call(current,"SetParameter",setter,"runtime-section","key","value");
-                Require(!File.Exists("runtime-section")&&File.ReadAllText(input)==text,"loaded setter must not write with UpdateFile enabled");
+                call(current,"setParameter",setter,"runtime-section","key","value");
+                require(!File.Exists("runtime-section")&&File.ReadAllText(input)==text,"loaded setter must not write with UpdateFile enabled");
             }
-            Console.WriteLine("PASS: IniLike and OperatorUI parsing and SetParameter behavior match; overrides do not write files.");
+            Console.WriteLine("PASS: IniLike and OperatorUI parsing and setParameter behavior match; overrides do not write files.");
             return 0;
         }
         finally

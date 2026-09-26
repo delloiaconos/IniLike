@@ -63,49 +63,59 @@ bool enabled = config.getParameter("SERVER", "enabled", false);
 List<string> items = config.getTable("ITEMS");
 
 // Create or update a parameter in memory. The source file is unchanged.
-config.SetParameter("DIRECTORIES", "data", "./other-data/");
+config.setParameter("DIRECTORIES", "data", "./other-data/");
 ```
 
 To create a configuration entirely in memory:
 
 ```csharp
 var config = new ConfigurationFile();
-config.SetParameter("SERVER", "port", "8080");
+config.setParameter("SERVER", "port", "8080");
 int port = config.getParameter("SERVER", "port", 80);
 ```
 
 ## API reference
 
+Method names use camelCase: `checkSection`, `getParameter` (all overloads),
+`addParameter`, `getTable`, and `setParameter`. This is a breaking API rename:
+callers using PascalCase names (including `SetParameter`) must update their calls
+and recompile.
+The old method names are not retained as aliases. Parsing and in-memory behavior
+are unchanged by this rename.
+
 | Member | Behavior |
 | --- | --- |
 | `ConfigurationFile(string filename)` | Loads the file immediately. Missing files and parsing errors cause exceptions. |
 | `ConfigurationFile()` | Creates an empty container without loading a file. |
-| `checkSection(string)` | Checks for a section, excluding tables. With `UpdateFile=true`, a missing section also triggers the file side effect described below. |
+| `checkSection(string)` | Checks for a section, excluding tables. Never creates sections or writes files, including when `UpdateFile=true`. |
 | `getParameter(section, key, string defaultValue)` | Returns the stored text, or the default if the section or key is missing. |
 | `getParameter(..., bool)` | Only `TRUE`, ignoring case and surrounding whitespace, is true. Any other stored value is false, even when the default is true. |
 | `getParameter(..., double/float)` | Parses using invariant culture after replacing commas with periods. Returns the default if parsing fails. |
 | `getParameter(..., long/int)` | Parses an integer using invariant culture. Returns the default if parsing fails. The int overload parses as long and then performs an unchecked cast, so values outside the int range can wrap instead of returning the default. |
 | `getTable(name)` | Returns the mutable internal list. For a missing table, returns a new empty list that is not attached to the container. |
-| `SetParameter(string sectionName, string parameterName, string value)` | Creates missing sections and keys or replaces an existing value. Stores text without parsing or trimming and preserves case-sensitive names. Never writes files, including when `UpdateFile=true`. |
-| `addParameter(...)` | Declared but **not implemented**. Changes neither memory nor files. |
+| `setParameter(string sectionName, string parameterName, string value)` | Creates missing sections and keys or replaces an existing value. Stores text without parsing or trimming and preserves case-sensitive names. Never writes files, including when `UpdateFile=true`. |
+| `addParameter(section, key, defaultValue)` | Adds a missing parameter in memory, creating its section if needed. Preserves existing values, including null. Stores text unchanged and never writes files, regardless of `UpdateFile`. Null section/key names throw `ArgumentNullException`; empty names are allowed. |
 | `UpdateFile` | Public field, false by default. See limitations below. |
 | `parSeparator`, `parEndLineDelimiter` | Public arrays defaulting to `=` and `; , .`. Loading occurs in the constructor before callers can change them. There is no public reload method. |
 
 ## Limitations
 
-`SetParameter` supports in-memory overrides. Subsequent `getParameter` calls
+`setParameter` supports in-memory overrides. Subsequent `getParameter` calls
 use the new values and the usual type conversions. Changes are not persisted
 to disk.
 
-`UpdateFile=true` does not provide working INI persistence. Checking or reading
-a missing section opens or creates a file **named after that section** in the
-working directory and appends a section header. It does not update the original
-configuration file or add the section to the in-memory dictionary.
-`addParameter` does nothing. Keep `UpdateFile=false` and use `SetParameter`
-for in-memory changes.
+`addParameter` adds defaults only when a parameter is absent; `setParameter`
+also replaces existing values. Neither method writes files.
 
-File readers and writers are disposed through `using` blocks, including when
-parsing or writing throws an exception. Concurrent changes are not synchronized.
+`UpdateFile=true` makes getters store missing parameters and their default values
+in memory through `addParameter`, creating the section if necessary. Subsequent
+reads return the stored value even if a different default is supplied. With
+`UpdateFile=false` (the default), getters do not add missing parameters.
+`checkSection` remains a pure existence check in both modes. No operation saves
+these changes to disk; the legacy writes to files named after sections are removed.
+
+File readers are disposed through `using` blocks, including when parsing throws
+an exception. Concurrent changes are not synchronized.
 
 ## Build
 
@@ -148,8 +158,8 @@ python3 tests/run.py --configuration Debug
 
 The runner builds the solution from source in a temporary directory and tests
 the resulting assembly using `tests/ConfigurationFileTests.cs`. Each test runs
-in an isolated directory that is removed afterward, including files created by
-`UpdateFile`. Build artifacts are kept outside the repository. The command
+in an isolated directory that is removed afterward. Tests verify that `UpdateFile`
+does not cause file writes. Build artifacts are kept outside the repository. The command
 prints a result summary and exits with a nonzero status if a build or test fails.
 
 The suite covers:
