@@ -112,11 +112,20 @@ are unchanged by this rename.
 | `getParameter(..., double/float)` | Parses using invariant culture after replacing commas with periods. Returns the default if parsing fails. |
 | `getParameter(..., long/int)` | Parses an integer using invariant culture. Returns the default if parsing fails. The int overload parses as long and then performs an unchecked cast, so values outside the int range can wrap instead of returning the default. |
 | `getTable(name)` | Returns the mutable internal list. For a missing table, returns a new empty list that is not attached to the container. |
+| `listSections()` | Returns section names, excluding tables. |
+| `listParameters(string Section)` | Returns parameter names in the specified section. Missing or empty sections return an empty list; null throws `ArgumentNullException`. |
+| `listParameters()` | Returns distinct parameter names across all sections. The same name in multiple sections appears once; names differing in case remain distinct. |
+| `listTables()` | Returns table names, excluding sections. |
 | `setParameter(string sectionName, string parameterName, string value)` | Creates missing sections and keys or replaces an existing value. Stores text without parsing or trimming and preserves case-sensitive names. Never writes files. |
 | `addParameter(section, key, defaultValue)` | Adds a missing parameter in memory, creating its section if needed. Preserves existing values, including null. Stores text unchanged and never writes files, regardless of `autoUpdateFile`. Null section/key names throw `ArgumentNullException`; empty names are allowed. |
 
 
 ## Limitations
+
+The four listing methods return independent `List<string>` snapshots sorted with
+`StringComparer.Ordinal`. Changing a returned list does not modify the configuration;
+later in-memory changes are reflected only by a new call. Listing never creates
+sections or writes files. Parameter listings contain names, not values.
 
 Parser settings are exposed as public readonly fields:
 

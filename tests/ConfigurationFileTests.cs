@@ -338,8 +338,53 @@ class ConfigurationFileTests
         equal(1, Directory.GetFiles(".").Length);
     }
 
+    static void listNames()
+    {
+        ConfigurationFile Empty = new ConfigurationFile();
+        equal(0, Empty.listSections().Count);
+        equal(0, Empty.listParameters().Count);
+        equal(0, Empty.listParameters("missing").Count);
+        equal(0, Empty.listTables().Count);
+        equal(0, Directory.GetFiles(".").Length);
+
+        const string Source = "[b]\nshared=1\nz=2\n[A]\nshared=3\nZ=4\n=empty key\n[EMPTY]\n[TABLE:b]\nrow\n[TABLE:A]\n";
+        ConfigurationFile Config = load(Source);
+        equal("A|EMPTY|b", String.Join("|", Config.listSections().ToArray()));
+        equal("A|b", String.Join("|", Config.listTables().ToArray()));
+        equal("|Z|shared", String.Join("|", Config.listParameters("A").ToArray()));
+        equal("shared|z", String.Join("|", Config.listParameters("b").ToArray()));
+        equal("|Z|shared|z", String.Join("|", Config.listParameters().ToArray()));
+        equal(0, Config.listParameters("EMPTY").Count);
+        equal(0, Config.listParameters("a").Count);
+        equal(false, Config.checkSection("a"));
+        throws<ArgumentNullException>(delegate { Config.listParameters(null); });
+
+        List<string> Sections = Config.listSections();
+        List<string> Parameters = Config.listParameters("A");
+        List<string> AllParameters = Config.listParameters();
+        Config.listSections().Clear();
+        Config.listParameters("A").Clear();
+        Config.listParameters().Clear();
+        Config.listTables().Clear();
+        equal(3, Config.listSections().Count);
+        equal(3, Config.listParameters("A").Count);
+        equal(4, Config.listParameters().Count);
+        equal(2, Config.listTables().Count);
+        Config.addParameter("NEW", "added", "value");
+        Config.setParameter("A", "new", "value");
+        equal(3, Sections.Count);
+        equal(3, Parameters.Count);
+        equal(4, AllParameters.Count);
+        equal("A|EMPTY|NEW|b", String.Join("|", Config.listSections().ToArray()));
+        equal("|Z|new|shared", String.Join("|", Config.listParameters("A").ToArray()));
+        equal("|Z|added|new|shared|z", String.Join("|", Config.listParameters().ToArray()));
+        equal(Source, File.ReadAllText("config.ini"));
+        equal(1, Directory.GetFiles(".").Length);
+    }
+
     static int Main()
     {
+        test("name listings are sorted independent snapshots", listNames);
         test("string and typed path constructors", pathConstructors);
         test("file handles released after loading and parsing errors", fileHandles);
         test("empty container and all default overloads", defaults);

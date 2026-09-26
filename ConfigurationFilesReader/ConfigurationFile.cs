@@ -236,6 +236,47 @@ namespace ConfigurationFilesReader
             return (int)((long)getParameter(SectionName, ParameterName, (long)DefaultValue));
         }
 
+        // Return a sorted snapshot of section names, excluding tables.
+        public List<string> listSections()
+        {
+            List<string> Names = new List<string>(dictSections.Keys);
+            Names.Sort(StringComparer.Ordinal);
+            return Names;
+        }
+
+        // Return a sorted snapshot of parameter names in a section.
+        public List<string> listParameters(string Section)
+        {
+            if (Section == null)
+                throw new ArgumentNullException("Section");
+            strDictionary Parameters;
+            if (!dictSections.TryGetValue(Section, out Parameters))
+                return new List<string>();
+            List<string> Names = new List<string>(Parameters.Keys);
+            Names.Sort(StringComparer.Ordinal);
+            return Names;
+        }
+
+        // Return distinct parameter names across all sections, sorted ordinally.
+        public List<string> listParameters()
+        {
+            HashSet<string> UniqueNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (strDictionary Parameters in dictSections.Values)
+                foreach (string Name in Parameters.Keys)
+                    UniqueNames.Add(Name);
+            List<string> Names = new List<string>(UniqueNames);
+            Names.Sort(StringComparer.Ordinal);
+            return Names;
+        }
+
+        // Return a sorted snapshot of table names, excluding sections.
+        public List<string> listTables()
+        {
+            List<string> Names = new List<string>(dictTables.Keys);
+            Names.Sort(StringComparer.Ordinal);
+            return Names;
+        }
+
         // Get a table by name.
         public strTable getTable(string tablename)
         {
