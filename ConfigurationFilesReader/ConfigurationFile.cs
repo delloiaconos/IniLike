@@ -28,11 +28,15 @@ namespace ConfigurationFilesReader
             : this()
         {
             if (FilePath == null) {
-                throw new ArgumentNullException("FilePath");
+                throw new ArgumentNullException("Expected 'FilePath' not null!");
             }
             this.FilePath = FilePath;
-            if (!loadFile()) {
-                throw new System.Exception("Unable to open file: '" + FilePath.FullName + "'.");
+            if (!this.FilePath.Exists)
+            {
+                throw new System.Exception("File '" + FilePath.FullName + "' not found.");
+            } else if (!loadFile())
+            {
+                throw new System.Exception("Unable to load file '" + FilePath.FullName + "'.");
             }
         }
 
