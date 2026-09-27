@@ -66,6 +66,7 @@ namespace ConfigurationFilesReader
             dictTables = new Dictionary<string, strTable>();
             dictLists = new Dictionary<string, List<string>>();
             dictDictionaries = new Dictionary<string, strDictionary>();
+            dictTexts = new Dictionary<string, List<string>>();
         }
 
         private static FileInfo combinePath(DirectoryInfo BaseDirectory, string FileName)

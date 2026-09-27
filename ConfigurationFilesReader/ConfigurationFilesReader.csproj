@@ -88,6 +88,7 @@
     <Compile Include="ConfigurationFile.Tables.cs" />
     <Compile Include="ConfigurationFile.Dictionaries.cs" />
     <Compile Include="ConfigurationFile.Lists.cs" />
+    <Compile Include="ConfigurationFile.Texts.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

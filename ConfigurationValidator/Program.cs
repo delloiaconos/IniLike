@@ -24,6 +24,7 @@ namespace ConfigurationValidator
                         case "--sections":
                         case "--dictionaries":
                         case "--tables":
+                        case "--texts":
                         case "--lists":
                         case "--parameters":
                         case "--rewrite":
@@ -70,9 +71,9 @@ namespace ConfigurationValidator
                     }
                 } else if (Options.Count == 0) {
                     Console.WriteLine("Configuration loaded successfully: {0}", FileName);
-                    Console.WriteLine("Sections: {0}; tables: {1}; lists: {2}; dictionaries: {3}.",
+                    Console.WriteLine("Sections: {0}; tables: {1}; lists: {2}; dictionaries: {3}; texts: {4}.",
                         Config.listSections().Count, Config.listTables().Count, Config.listLists().Count,
-                        Config.listDictionaries().Count);
+                        Config.listDictionaries().Count, Config.listTexts().Count);
                 } else {
                     if (Options.Contains("--sections"))
                         printNames("Sections", Config.listSections());
@@ -82,6 +83,8 @@ namespace ConfigurationValidator
                         printNames("Tables", Config.listTables());
                     if (Options.Contains("--lists"))
                         printNames("Lists", Config.listLists());
+                    if (Options.Contains("--texts"))
+                        printNames("Texts", Config.listTexts());
                     if (Options.Contains("--parameters"))
                         printNames("Parameters", Config.listParameters());
                 }
@@ -112,6 +115,7 @@ namespace ConfigurationValidator
             Console.WriteLine("  --dictionaries  List dictionary names (DICT or DICTIONARY).");
             Console.WriteLine("  --tables        List table names (TBL or TABLE).");
             Console.WriteLine("  --lists         List list names (LST or LIST).");
+            Console.WriteLine("  --texts         List text block names (TEXT or TXT).");
             Console.WriteLine("  --parameters    List distinct parameter names across all sections.");
             Console.WriteLine("Lists are sorted ordinally, under category headings, without values.");
             Console.WriteLine("  --rewrite       Write the configuration to output.ini, or stdout when omitted.");

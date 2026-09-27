@@ -958,8 +958,75 @@ class ConfigurationFileTests
         equal(0, new ConfigurationFile().listDictionaries().Count);
     }
 
+    static void textBlocks()
+    {
+        const string Content = "  hello, world.;  \n\tindent\t\n\n## literal comment\nx=a=b;\nUnicode: café 日本語\n ";
+        foreach (string Header in new string[] { "[TEXT: NOTES ]", "[TXT:NOTES]" }) {
+            foreach (string Ending in new string[] { "", "[END]\n", " [END: NOTES ] \n" }) {
+                string Source = Header + "\n" + Content + "\n" + Ending;
+                ConfigurationFile Config = load(Source);
+                equal(Content, Config.getText("NOTES"));
+                equal(false, Config.checkSection("NOTES"));
+                equal(0, Config.listTables().Count);
+                equal(0, Config.listLists().Count);
+                equal(0, Config.listDictionaries().Count);
+                Config.autoUpdateRegistry = true;
+                Config.autoSaveRegistry = true;
+                equal("", Config.getText("missing"));
+                equal(1, Config.listTexts().Count);
+                List<string> Names = Config.listTexts();
+                Names.Clear();
+                equal("NOTES", Config.listTexts()[0]);
+                equal(Source, File.ReadAllText("config.ini"));
+                using (StreamWriter Dump = Config.dump()) {
+                    ConfigurationFile Reloaded = new ConfigurationFile(Dump.BaseStream);
+                    equal(Content, Reloaded.getText("NOTES"));
+                    equal(true, Dump.BaseStream.CanRead);
+                }
+                Config.save();
+                equal(Content, new ConfigurationFile("config.ini").getText("NOTES"));
+                equal(true, File.ReadAllText("config.ini").Contains("[TEXT:NOTES]"));
+            }
+        }
+        ConfigurationFile Mixed = load("[TXT:S]\nraw;\n[S]\nk=section\n[TBL:S]\nrow\n[LST:S]\nitem\n[DICT:S]\nk=dict\n[TEXT:empty]\n[TXT:Z]\nz\n[END:Z]\nignored\n[TXT:A]\na\n[END]\n[TXT:s]\nlower\n[END]\n[txt:literal]\nk=v\n");
+        equal("raw;", Mixed.getText("S"));
+        equal("section", get(Mixed, "S", "k"));
+        equal("row", Mixed.getTable("S")[0]);
+        equal("item", Mixed.getList("S")[0]);
+        equal("dict", Mixed.getDictionary("S")["k"]);
+        equal("", Mixed.getText("empty"));
+        equal("z", Mixed.getText("Z"));
+        equal("a", Mixed.getText("A"));
+        equal("lower", Mixed.getText("s"));
+        equal("v", get(Mixed, "txt:literal", "k"));
+        equal("A,S,Z,empty,s", String.Join(",", Mixed.listTexts().ToArray()));
+        Mixed.save("mixed.ini");
+        ConfigurationFile Copy = new ConfigurationFile("mixed.ini");
+        equal("A,S,Z,empty,s", String.Join(",", Copy.listTexts().ToArray()));
+        equal("raw;", Copy.getText("S"));
+        equal("section", get(Copy, "S", "k"));
+        foreach (string NewLine in new string[] { "\n", "\r\n", "\r" }) {
+            using (MemoryStream Source = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("[TXT:T]" + NewLine + "first" + NewLine + "" + NewLine + "last"))) {
+                equal("first\n\nlast", new ConfigurationFile(Source).getText("T"));
+            }
+        }
+        equal("\n", load("[TEXT:T]\n\n\n[END]\n").getText("T"));
+        equal("", load("[TEXT:T]\n[END:T]\n").getText("T"));
+        throws<ArgumentNullException>(delegate { new ConfigurationFile().getText(null); });
+        equal(0, new ConfigurationFile().listTexts().Count);
+        throws<ArgumentException>(delegate { load("[TXT:T]\n[END]\n[TEXT:T]\n"); });
+        throws<FormatException>(delegate { load("[TXT:T]\n[END:t]\n"); });
+        ConfigurationFile Invalid = new ConfigurationFile { autoUpdateRegistry = true };
+        Invalid.setParameter("TEXT:T", "k", "v");
+        File.WriteAllText("preserved.ini", "original");
+        throws<InvalidOperationException>(delegate { Invalid.save("preserved.ini"); });
+        equal("original", File.ReadAllText("preserved.ini"));
+        equal(0, Directory.GetFiles(".", ".inilike-*.tmp").Length);
+    }
+
     static int Main()
     {
+        test("TEXT and TXT preserve raw Unicode text with normal block transitions", textBlocks);
         test("DICT and DICTIONARY preserve independent string dictionaries", dictionaryBlocks);
         test("LIST and LST preserve raw ordered items and round-trip with other blocks", listBlocks);
         test("SEC and SECTION headers support optional named and unnamed END", sectionBlocks);

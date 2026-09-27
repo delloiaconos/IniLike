@@ -9,14 +9,15 @@ namespace ConfigurationFilesReader
 
     public partial class ConfigurationFile
     {
-        private enum SectionType { None = 0, Section, Table, List, Dictionary };
+        private enum SectionType { None = 0, Section, Table, List, Dictionary, Text };
 
         private readonly Dictionary<SectionType, List<string>> sectionIdentifier = new Dictionary<SectionType, List<string>> {
             { SectionType.None, new List<string> { "END" } },
             { SectionType.Section, new List<string> { "SECTION", "SEC" } },
             { SectionType.Table, new List<string> { "TABLE", "TBL", "TAB" } },
             { SectionType.List, new List<string> { "LIST", "LST" } },
-            { SectionType.Dictionary, new List<string> { "DICT", "DICTIONARY" } }
+            { SectionType.Dictionary, new List<string> { "DICT", "DICTIONARY" } },
+            { SectionType.Text, new List<string> { "TEXT", "TXT" } }
         };
 
         // Unrecognized identifiers remain plain section names. A null name marks an unnamed end.
@@ -78,8 +79,9 @@ namespace ConfigurationFilesReader
 
             string currentLine;
             while ((currentLine = Reader.ReadLine()) != null) {
+                string RawLine = currentLine;
                 currentLine = currentLine.Trim();
-                if (currentLine.Length == 0 || isComment(currentLine)) {
+                if (reading != SectionType.Text && (currentLine.Length == 0 || isComment(currentLine))) {
                     continue;
                 }
 
@@ -102,10 +104,15 @@ namespace ConfigurationFilesReader
                         case SectionType.List:
                             dictLists.Add(currentParent, new List<string>());
                             break;
+                        case SectionType.Text:
+                            dictTexts.Add(currentParent, new List<string>());
+                            break;
                         case SectionType.Dictionary:
                             dictDictionaries.Add(currentParent, new strDictionary());
                             break;
                     }
+                } else if (reading == SectionType.Text) {
+                    dictTexts[currentParent].Add(RawLine);
                 } else if (reading == SectionType.Section || reading == SectionType.Dictionary) {
                     string[] sline = currentLine.Split(parSeparator);
                     if (sline.Length == 2) {

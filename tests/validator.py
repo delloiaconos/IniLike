@@ -34,11 +34,14 @@ def main():
         check(["one.ini", "two.ini"], 2, "expected exactly one", True)
         check([""], 2, "expected exactly one", True)
         check(["--help"], 0, "Exit codes:")
-        check(["missing.ini"], 1, "Unable to open file:", True)
+        check(["missing.ini"], 1, "not found.", True)
         cases = [
-            ("valid file.ini", "[SEC:S]\nk=v\n[END:S]\n[LST:L]\na=b\n[END]\n", 0, "Sections: 1; tables: 0; lists: 1; dictionaries: 0."),
-            ("empty.ini", "", 0, "Sections: 0; tables: 0; lists: 0; dictionaries: 0."),
-            ("dictionary.ini", "[DICT:CHANNELS]\nx=3\ny=3.14\n[END]\n", 0, "dictionaries: 1."),
+            ("valid file.ini", "[SEC:S]\nk=v\n[END:S]\n[LST:L]\na=b\n[END]\n", 0, "Sections: 1; tables: 0; lists: 1; dictionaries: 0; texts: 0."),
+            ("empty.ini", "", 0, "Sections: 0; tables: 0; lists: 0; dictionaries: 0; texts: 0."),
+            ("dictionary.ini", "[DICT:CHANNELS]\nx=3\ny=3.14\n[END]\n", 0, "dictionaries: 1; texts: 0."),
+            ("text.ini", "[TXT:NOTES]\n  café.;  \n\n## literal\nx=a=b\n[END:NOTES]\n", 0, "texts: 1."),
+            ("duplicate-text.ini", "[TXT:T]\n[TEXT:T]\n", 1, "ArgumentException:"),
+            ("text-end.ini", "[TEXT:T]\n[END:OTHER]\n", 1, "FormatException:"),
             ("duplicate-dictionary.ini", "[DICT:D]\nx=1\nx=2\n", 1, "ArgumentException:"),
             ("dictionary-end.ini", "[DICTIONARY:D]\nx=1\n[END:OTHER]\n", 1, "End label does not match the current block: 'D'."),
             ("ignored.ini", "outside=x\n[S]\ninvalid\nkey=a=b\n", 0, "Configuration loaded successfully"),
@@ -64,6 +67,7 @@ def main():
             "--dictionaries": "Dictionaries:\nAlpha\nZulu\n",
             "--tables": "Tables:\nAlpha\nZulu\n",
             "--lists": "Lists:\nAlpha\nZulu\n",
+            "--texts": "Texts:\n",
             "--parameters": "Parameters:\nA\na\nshared\nz\n",
         }
         for option, output in outputs.items():
@@ -75,7 +79,7 @@ def main():
         check(["--sections", listing.name, "--sections"], 0, outputs["--sections"], exact=True)
         check(["--unknown", listing.name], 2, "unknown option", True)
         check(["--sections", listing.name, "empty.ini"], 2, "expected exactly one", True)
-        check(["--parameters", "missing.ini"], 1, "Unable to open file:", True)
+        check(["--parameters", "missing.ini"], 1, "not found.", True)
         check(["--sections", "mismatch.ini"], 1, "FormatException:", True)
         dashed = root / "--sections"
         dashed.write_bytes(original)
@@ -115,6 +119,12 @@ def main():
         assert listing.read_bytes() == original
         check([destination.name, "--rewrite", destination.name], 0, "", exact=True)
         assert destination.read_text(encoding="utf-8") == canonical
+        check(["text.ini", "--texts"], 0, "Texts:\nNOTES\n", exact=True)
+        text_canonical = "[TEXT:NOTES]\n  café.;  \n\n## literal\nx=a=b\n[END]\n"
+        check(["text.ini", "--rewrite"], 0, text_canonical, exact=True)
+        check(["text.ini", "--rewrite", "text-copy.ini"], 0, "", exact=True)
+        assert (root / "text-copy.ini").read_text(encoding="utf-8") == text_canonical
+        check(["text-copy.ini", "--rewrite"], 0, text_canonical, exact=True)
         unicode_file = root / "unicode.ini"
         unicode_file.write_text("## comment\n[SEC:É]\nname=caffè\n[END]\n", encoding="utf-8")
         check([unicode_file.name, "--rewrite"], 0, "[É]\nname=caffè;\n", exact=True)

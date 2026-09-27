@@ -37,7 +37,8 @@ mono ConfigurationValidator/bin/Release/ConfigurationValidator.exe examples/benc
 | `--dictionaries` | Dictionary names (`DICT` or `DICTIONARY`). |
 | `--tables` | Table names (`TBL` or `TABLE`). |
 | `--lists` | List names (`LST` or `LIST`). |
-| `--parameters` | Distinct parameter names across all sections, excluding dictionary entries and table/list contents. |
+| `--texts` | Text block names (`TEXT` or `TXT`). |
+| `--parameters` | Distinct parameter names across all sections, excluding dictionary entries and table/list/text contents. |
 
 Listing options replace the normal success summary with category headings and
 one name per line, sorted ordinally and case-sensitively. Values are not printed;
@@ -65,7 +66,7 @@ success output. `--rewrite` cannot be combined with listing options.
 
 Rewriting uses the library's `dump` for stdout and `save` for file destinations.
 It normalizes headers and ordering and discards comments and original formatting
-as described in the [library saving reference](../README.md#saving).
+outside raw text content, as described in the [library saving reference](../README.md#saving).
 File output validates round-trip fidelity before
 replacing an existing destination; specifying the input path as the destination
 rewrites it in place. Without an explicit matching destination, the input is
@@ -74,7 +75,7 @@ unchanged. Loading or writing failures are reported on stderr with exit code 1.
 ## Diagnostics and exit codes
 
 Without listing or rewrite options, successful loading prints section, table,
-list and dictionary counts to stdout. Failures print
+list, dictionary and text block counts to stdout. Failures print
 the exception type and original library message (including inner exceptions) to
 stderr, without a stack trace. The first loading error stops validation; the tool
 does not save or modify the input file unless explicitly requested with `--rewrite`.

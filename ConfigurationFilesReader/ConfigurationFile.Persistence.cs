@@ -56,6 +56,13 @@ namespace ConfigurationFilesReader
                     Writer.WriteLine(Key + "=" + dictDictionaries[Name][Key] + ";");
                 }
             }
+            foreach (string Name in listTexts()) {
+                Writer.WriteLine("[TEXT:" + Name + "]");
+                foreach (string Line in dictTexts[Name]) {
+                    Writer.WriteLine(Line);
+                }
+                Writer.WriteLine("[END]");
+            }
             Writer.Flush();
         }
 
@@ -132,7 +139,7 @@ namespace ConfigurationFilesReader
         // Validate serialized data with the same parser used by callers.
         private bool hasSameData(ConfigurationFile Other)
         {
-            if (dictSections.Count != Other.dictSections.Count || dictTables.Count != Other.dictTables.Count || dictLists.Count != Other.dictLists.Count || dictDictionaries.Count != Other.dictDictionaries.Count) {
+            if (dictSections.Count != Other.dictSections.Count || dictTables.Count != Other.dictTables.Count || dictLists.Count != Other.dictLists.Count || dictDictionaries.Count != Other.dictDictionaries.Count || dictTexts.Count != Other.dictTexts.Count) {
                 return false;
             }
             foreach (KeyValuePair<string, strDictionary> SecName in dictSections) {
@@ -165,6 +172,17 @@ namespace ConfigurationFilesReader
                 }
                 for (int Index = 0; Index < Items.Count; Index++) {
                     if (List.Value[Index] != Items[Index]) {
+                        return false;
+                    }
+                }
+            }
+            foreach (KeyValuePair<string, List<string>> Text in dictTexts) {
+                List<string> Lines;
+                if (!Other.dictTexts.TryGetValue(Text.Key, out Lines) || Text.Value.Count != Lines.Count) {
+                    return false;
+                }
+                for (int Index = 0; Index < Lines.Count; Index++) {
+                    if (Text.Value[Index] != Lines[Index]) {
                         return false;
                     }
                 }

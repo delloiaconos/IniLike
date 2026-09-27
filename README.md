@@ -4,12 +4,13 @@ IniLike is a standalone C# library for reading INI-like configuration files with
 It targets .NET Framework 3.5. 
 The namespace and assembly name are **ConfigurationFilesReader**, and the public class is `ConfigurationFilesReader.ConfigurationFile`.
 
-The implementation uses one partial class across seven source files in
+The implementation uses one partial class across eight source files in
 `ConfigurationFilesReader/`: `ConfigurationFile.cs` holds shared settings and
 constructors; `ConfigurationFile.Parsing.cs` handles loading;
 `ConfigurationFile.Persistence.cs` handles dump/save and round-trip validation.
 `ConfigurationFile.Sections.cs`, `ConfigurationFile.Tables.cs`,
-`ConfigurationFile.Dictionaries.cs` and `ConfigurationFile.Lists.cs` hold the
+`ConfigurationFile.Dictionaries.cs`, `ConfigurationFile.Lists.cs` and
+`ConfigurationFile.Texts.cs` hold the
 respective storage and access methods, including parameter methods in Sections.
 
 ## File format
@@ -44,22 +45,32 @@ second; 20; inactive;
   `y = 3.14` stores `"3.14"`. They use the same key/value parsing, trimming and
   comment rules as sections, including ignoring lines without exactly one `=`.
   Duplicate keys throw; keys differing in case remain distinct.
-- A section, table, list or dictionary may end with `[END]` or `[END:NAME]`. The closing name, when supplied
+- `[TEXT:NAME]` and `[TXT:NAME]` are equivalent plain-text block headers.
+  Content supports Unicode and preserves whitespace, blank lines, `##` comment-looking
+  lines, `=` and trailing punctuation. Any bracketed header starts a new block,
+  just as in lists; `[END]` or `[END:NAME]` closes the text block. Header recognition
+  uses trimmed lines, so bracketed lines cannot be stored as literal text.
+  Text blocks have their own case-sensitive name space. `getText(name)` returns
+  their lines joined with `\n` (without an added final newline); original CR/LF
+  line-ending style is not retained. Empty and missing blocks return `""`;
+  `listTexts()` distinguishes an existing empty block from a missing one.
+- A section, table, list, dictionary or text block may end with `[END]` or `[END:NAME]`. The closing name, when supplied
   for an active block, must match its name (after trimming); a mismatch throws
   `FormatException`. Closing markers are not sections or table rows. Subsequent
   data is ignored until another block header. A closing marker outside
   block also resets the parser to that state. Without a closing marker, the
   next block header or end of file ends the block. Saving uses the canonical
-  `[NAME]`, `[TABLE:NAME]`, `[LIST:NAME]` and `[DICT:NAME]` forms without closing markers.
+  `[NAME]`, `[TABLE:NAME]`, `[LIST:NAME]` and `[DICT:NAME]` forms without closing markers. Text blocks are saved as `[TEXT:NAME]` followed
+  by raw content lines and `[END]`.
 - Section, key, and table names are **case-sensitive**. The `SEC:`, `SECTION:`,
-  `TABLE:`, `TBL:`, `LIST:`, `LST:`, `DICT:`, `DICTIONARY:` and `END` keywords
-  must be uppercase. Sections, tables, lists and dictionaries have separate name spaces and may
+  `TABLE:`, `TBL:`, `LIST:`, `LST:`, `DICT:`, `DICTIONARY:`, `TEXT:`, `TXT:` and `END` keywords
+  must be uppercase. Sections, tables, lists, dictionaries and text blocks have separate name spaces and may
   share a name.
-- Blank lines and lines starting with any nonempty prefix in `parComment` after
+- Outside text blocks, blank lines and lines starting with any nonempty prefix in `parComment` after
   trimming are ignored. The default prefix is `##`. Matching is ordinal and
   case-sensitive, takes precedence over section/table headers, and applies only
   to full-line comments. Null or empty prefix entries are ignored.
-- Leading and trailing whitespace is trimmed from lines, section names, keys,
+- Outside text content, leading and trailing whitespace is trimmed from lines, section names, keys,
   and values. All trailing `;`, `,`, and `.` characters are then removed from
   values, table rows and list items. Whitespace exposed by removing these delimiters is
   preserved.
@@ -89,6 +100,7 @@ Example configuration files are in [`examples/`](examples/):
 | [tables.ini](examples/tables.ini) | `TABLE`/`TBL`, test phases, blank columns and empty tables. |
 | [lists.ini](examples/lists.ini) | `LIST`/`LST`, plain items and literal assignments, repeated items and empty lists. |
 | [dictionaries.ini](examples/dictionaries.ini) | `DICT`/`DICTIONARY`, string key/value entries and optional endings. |
+| [texts.ini](examples/texts.ini) | Raw Unicode text, blank lines, punctuation and transitions using `TEXT`/`TXT`. |
 | [bench.ini](examples/bench.ini) | Combined sections, tables and lists, including shared names across block types. |
 
 Load an example from the repository root with
@@ -185,6 +197,9 @@ classDiagram
         %% Lists
         +listLists() List~string~
         +getList(string ListName) List~string~
+        %% Text blocks
+        +listTexts() List~string~
+        +getText(string TextName) string
         %% Persistence
         +dump() StreamWriter
         +dump(StreamWriter Writer) void
@@ -226,6 +241,8 @@ Relative paths are resolved against the working directory when their path object
 | `listLists()` | Returns an independent, ordinally sorted snapshot of list names, excluding sections and tables. |
 | `getDictionary(string DictionaryName)` | Returns the live `Dictionary<string, string>`. Missing names return an unattached empty dictionary; null throws `ArgumentNullException`. Does not create a registered dictionary. |
 | `listDictionaries()` | Returns an independent, ordinally sorted snapshot of dictionary names. |
+| `getText(string TextName)` | Returns raw text lines joined with LF, or an empty string for a missing block. Null throws `ArgumentNullException`. Does not create entries or save. |
+| `listTexts()` | Returns an independent, ordinally sorted snapshot of text block names. |
 | `listSections()` | Returns section names, excluding tables. |
 | `listParameters(string Section)` | Returns parameter names in the specified section. Missing or empty sections return an empty list; null throws `ArgumentNullException`. |
 | `listParameters()` | Returns distinct parameter names across all sections. The same name in multiple sections appears once; names differing in case remain distinct. |
@@ -253,6 +270,17 @@ config.save();
 operate on sections only. Direct dictionary mutations do not trigger automatic
 creation or saving; call `save` explicitly. Dictionary names and keys are sorted
 ordinally for dump/save, and the same round-trip validation applies to their values.
+
+Text blocks are accessed independently from sections and lists:
+
+```csharp
+string notes = config.getText("NOTES");
+List<string> textNames = config.listTexts();
+```
+
+The returned string is a snapshot; changing a local string does not modify the
+configuration. Neither text accessor creates entries or writes files, regardless
+of `autoUpdateRegistry` or `autoSaveRegistry`.
 
 ### Saving
 
@@ -303,15 +331,17 @@ config.save(new System.IO.FileInfo("backups"), "config.ini");
 ```
 
 All overloads save the current in-memory sections, parameters, table rows, list
-items and dictionary entries.
+items, dictionary entries and text blocks.
 Explicit destinations do not change the original path used by `save()`. An
 in-memory configuration always needs an explicit destination, even after its
 first save. Parent directories must already exist; null arguments are rejected.
 
 Output uses UTF-8 without a BOM, ordinally sorted section/parameter/table names,
 and the current order of table rows and list items. Comments, source ordering and original
-formatting are not preserved. Saving uses the standard `=` separator and `;`
-terminator regardless of mutations to the public delimiter arrays.
+formatting outside text content are not preserved. Text content retains its raw
+lines, including whitespace and comment-looking lines. Saving uses the standard `=` separator and `;`
+terminator regardless of mutations to the public delimiter arrays; text content
+has no added terminators.
 
 `save` obtains the serialized bytes from `dump()`, copies them to a temporary file
 in the destination directory, closes that file, and reloads it with
@@ -447,7 +477,7 @@ The command prints a result summary and exits with a nonzero status if a build o
 
 The suite covers:
 
-- Sections, tables, mutable lists, and transitions between sections and tables.
+- Sections, tables, mutable lists, raw Unicode text blocks, and transitions between blocks.
 - Comments, whitespace, delimiters, Unicode, and case-sensitive names.
 - Defaults for every getter overload, boolean conversion, and numeric conversion
   under three cultures, including integer boundaries and overflow behavior.
