@@ -38,7 +38,8 @@ mono ConfigurationValidator/bin/Release/ConfigurationValidator.exe examples/benc
 | `--tables` | Table names (`TBL` or `TABLE`). |
 | `--lists` | List names (`LST` or `LIST`). |
 | `--texts` | Text block names (`TEXT` or `TXT`). |
-| `--parameters` | Distinct parameter names across all sections, excluding dictionary entries and table/list/text contents. |
+| `--encoded` | Encoded block names (`ENCODED`, `ENC`, `BASE64` or `B64`). |
+| `--parameters` | Distinct parameter names across all sections, excluding dictionary entries and table/list/text/encoded contents. |
 
 Listing options replace the normal success summary with category headings and
 one name per line, sorted ordinally and case-sensitively. Values are not printed;
@@ -75,7 +76,7 @@ unchanged. Loading or writing failures are reported on stderr with exit code 1.
 ## Diagnostics and exit codes
 
 Without listing or rewrite options, successful loading prints section, table,
-list, dictionary and text block counts to stdout. Failures print
+list, dictionary, text and encoded block counts to stdout. Failures print
 the exception type and original library message (including inner exceptions) to
 stderr, without a stack trace. The first loading error stops validation; the tool
 does not save or modify the input file unless explicitly requested with `--rewrite`.
@@ -90,7 +91,9 @@ Validation follows the existing parser's permissive rules. For example, lines
 outside blocks or section lines with multiple `=` characters are ignored, not
 reported as syntax errors. Success means the library can load the file; it does
 not guarantee that every line was consumed or that application-specific values
-are valid. Duplicates and mismatched `END` labels are reported as library errors.
+are valid. Duplicates, mismatched `END` labels and malformed Base64 payloads
+are reported as library errors. Base64 is decoded during loading, so invalid data
+fails validation even when no binary data is requested.
 
 ## Validate all examples
 

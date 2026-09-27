@@ -24,6 +24,7 @@ namespace ConfigurationValidator
                         case "--sections":
                         case "--dictionaries":
                         case "--tables":
+                        case "--encoded":
                         case "--texts":
                         case "--lists":
                         case "--parameters":
@@ -71,9 +72,9 @@ namespace ConfigurationValidator
                     }
                 } else if (Options.Count == 0) {
                     Console.WriteLine("Configuration loaded successfully: {0}", FileName);
-                    Console.WriteLine("Sections: {0}; tables: {1}; lists: {2}; dictionaries: {3}; texts: {4}.",
+                    Console.WriteLine("Sections: {0}; tables: {1}; lists: {2}; dictionaries: {3}; texts: {4}; encoded: {5}.",
                         Config.listSections().Count, Config.listTables().Count, Config.listLists().Count,
-                        Config.listDictionaries().Count, Config.listTexts().Count);
+                        Config.listDictionaries().Count, Config.listTexts().Count, Config.listEncoded().Count);
                 } else {
                     if (Options.Contains("--sections"))
                         printNames("Sections", Config.listSections());
@@ -85,6 +86,8 @@ namespace ConfigurationValidator
                         printNames("Lists", Config.listLists());
                     if (Options.Contains("--texts"))
                         printNames("Texts", Config.listTexts());
+                    if (Options.Contains("--encoded"))
+                        printNames("Encoded", Config.listEncoded());
                     if (Options.Contains("--parameters"))
                         printNames("Parameters", Config.listParameters());
                 }
@@ -116,6 +119,7 @@ namespace ConfigurationValidator
             Console.WriteLine("  --tables        List table names (TBL or TABLE).");
             Console.WriteLine("  --lists         List list names (LST or LIST).");
             Console.WriteLine("  --texts         List text block names (TEXT or TXT).");
+            Console.WriteLine("  --encoded        List encoded block names (ENCODED, ENC, BASE64 or B64).");
             Console.WriteLine("  --parameters    List distinct parameter names across all sections.");
             Console.WriteLine("Lists are sorted ordinally, under category headings, without values.");
             Console.WriteLine("  --rewrite       Write the configuration to output.ini, or stdout when omitted.");

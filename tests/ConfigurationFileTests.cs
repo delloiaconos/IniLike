@@ -1024,8 +1024,96 @@ class ConfigurationFileTests
         equal(0, Directory.GetFiles(".", ".inilike-*.tmp").Length);
     }
 
+    static void encodedBlocks()
+    {
+        byte[] Expected = new byte[] { 0, 1, 2, 255, 128 };
+        foreach (string Header in new string[] { "[ENCODED: DATA ]", "[ENC:DATA]", "[BASE64: DATA ]", "[B64:DATA]" }) {
+            foreach (string Ending in new string[] { "", "[END]\n", " [END: DATA ] \n", "[S]\nk=v\n" }) {
+                string Source = Header + "\n AA\tE\n## comment\n\nC/4A= \n" + Ending;
+                ConfigurationFile Config = load(Source);
+                byte[] Actual = Config.getEncoded("DATA");
+                equal(Expected.Length, Actual.Length);
+                for (int Index = 0; Index < Expected.Length; Index++) equal(Expected[Index], Actual[Index]);
+                Actual[0] = 99;
+                equal((byte)0, Config.getEncoded("DATA")[0]);
+                equal(false, Config.checkSection("DATA"));
+                equal(0, Config.listTables().Count);
+                equal(0, Config.listLists().Count);
+                equal(0, Config.listTexts().Count);
+                equal(0, Config.listDictionaries().Count);
+                Config.autoUpdateRegistry = true;
+                Config.autoSaveRegistry = true;
+                equal(0, Config.getEncoded("missing").Length);
+                List<string> Names = Config.listEncoded();
+                Names.Clear();
+                equal("DATA", Config.listEncoded()[0]);
+                equal(Source, File.ReadAllText("config.ini"));
+                using (StreamWriter Dump = Config.dump()) {
+                    equal("AAEC/4A=", Convert.ToBase64String(new ConfigurationFile(Dump.BaseStream).getEncoded("DATA")));
+                    equal(true, Dump.BaseStream.CanRead);
+                }
+                Config.save();
+                equal("AAEC/4A=", Convert.ToBase64String(new ConfigurationFile("config.ini").getEncoded("DATA")));
+                equal(true, File.ReadAllText("config.ini").Contains("[ENCODED:DATA]"));
+            }
+        }
+        byte[] AllBytes = new byte[256];
+        for (int Index = 0; Index < AllBytes.Length; Index++) AllBytes[Index] = (byte)Index;
+        using (ForwardOnlyStream Source = new ForwardOnlyStream(System.Text.Encoding.ASCII.GetBytes("[B64:ALL]\n" + Convert.ToBase64String(AllBytes, Base64FormattingOptions.InsertLineBreaks)))) {
+            ConfigurationFile Config = new ConfigurationFile(Source);
+            byte[] Actual = Config.getEncoded("ALL");
+            equal(256, Actual.Length);
+            for (int Index = 0; Index < Actual.Length; Index++) equal(AllBytes[Index], Actual[Index]);
+            Config.save("all.ini");
+            equal(Convert.ToBase64String(AllBytes), Convert.ToBase64String(new ConfigurationFile("all.ini").getEncoded("ALL")));
+            equal(true, Source.CanRead);
+        }
+        string[] Vectors = { "", "Zg==", "Zm8=", "Zm9v" };
+        string[] Decoded = { "", "f", "fo", "foo" };
+        for (int Index = 0; Index < Vectors.Length; Index++) {
+            equal(Decoded[Index], System.Text.Encoding.ASCII.GetString(load("[BASE64:B]\n" + Vectors[Index]).getEncoded("B")));
+        }
+        ConfigurationFile Mixed = load("[S]\nk=v\n[TBL:S]\nrow\n[LST:S]\nitem\n[DICT:S]\nk=dict\n[TXT:S]\ntext\n[B64:S]\nZg==\n[B64:Z]\n[B64:A]\n[END:A]\nignored\n[B64:s]\nZm8=\n[END:s]\n[b64:literal]\nk=v\n");
+        equal("A,S,Z,s", String.Join(",", Mixed.listEncoded().ToArray()));
+        equal(0, Mixed.getEncoded("A").Length);
+        equal(0, Mixed.getEncoded("Z").Length);
+        equal("f", System.Text.Encoding.ASCII.GetString(Mixed.getEncoded("S")));
+        equal("fo", System.Text.Encoding.ASCII.GetString(Mixed.getEncoded("s")));
+        equal("text", Mixed.getText("S"));
+        equal("v", get(Mixed, "b64:literal", "k"));
+        Mixed.save("mixed.ini");
+        equal("A,S,Z,s", String.Join(",", new ConfigurationFile("mixed.ini").listEncoded().ToArray()));
+        throws<ArgumentNullException>(delegate { new ConfigurationFile().getEncoded(null); });
+        equal(0, new ConfigurationFile().listEncoded().Count);
+        foreach (string First in new string[] { "ENCODED", "ENC", "BASE64", "B64" }) {
+            foreach (string Second in new string[] { "ENCODED", "ENC", "BASE64", "B64" }) {
+                throws<ArgumentException>(delegate { load("[" + First + ":B]\n[" + Second + ":B]\n"); });
+            }
+        }
+        ConfigurationFile Lowercase = load("[encoded:literal]\nk=v\n[enc:literal]\nk=w\n");
+        equal("v", get(Lowercase, "encoded:literal", "k"));
+        equal("w", get(Lowercase, "enc:literal", "k"));
+        equal(0, Lowercase.listEncoded().Count);
+        throws<FormatException>(delegate { load("[B64:B]\n[END:b]\n"); });
+        foreach (string Invalid in new string[] { "!", "A", "AA", "A===", "AAAA=", "AA==AA==", "AA==;", "AA==,", "AA==.", "_w==", "café" }) {
+            foreach (string End in new string[] { "", "\n[END]", "\n[S]" }) {
+                using (MemoryStream Source = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("[B64:BAD]\n" + Invalid + End))) {
+                    throws<FormatException>(delegate { new ConfigurationFile(Source); });
+                    equal(true, Source.CanRead);
+                }
+            }
+        }
+        ConfigurationFile Unrepresentable = new ConfigurationFile { autoUpdateRegistry = true };
+        Unrepresentable.setParameter("ENCODED:BAD", "key", "value");
+        File.WriteAllText("preserved.ini", "original");
+        throws<InvalidOperationException>(delegate { Unrepresentable.save("preserved.ini"); });
+        equal("original", File.ReadAllText("preserved.ini"));
+        equal(0, Directory.GetFiles(".", ".inilike-*.tmp").Length);
+    }
+
     static int Main()
     {
+        test("ENCODED, ENC, BASE64 and B64 decode binary data and preserve it through saving", encodedBlocks);
         test("TEXT and TXT preserve raw Unicode text with normal block transitions", textBlocks);
         test("DICT and DICTIONARY preserve independent string dictionaries", dictionaryBlocks);
         test("LIST and LST preserve raw ordered items and round-trip with other blocks", listBlocks);

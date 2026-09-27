@@ -36,10 +36,14 @@ def main():
         check(["--help"], 0, "Exit codes:")
         check(["missing.ini"], 1, "not found.", True)
         cases = [
-            ("valid file.ini", "[SEC:S]\nk=v\n[END:S]\n[LST:L]\na=b\n[END]\n", 0, "Sections: 1; tables: 0; lists: 1; dictionaries: 0; texts: 0."),
-            ("empty.ini", "", 0, "Sections: 0; tables: 0; lists: 0; dictionaries: 0; texts: 0."),
-            ("dictionary.ini", "[DICT:CHANNELS]\nx=3\ny=3.14\n[END]\n", 0, "dictionaries: 1; texts: 0."),
-            ("text.ini", "[TXT:NOTES]\n  café.;  \n\n## literal\nx=a=b\n[END:NOTES]\n", 0, "texts: 1."),
+            ("valid file.ini", "[SEC:S]\nk=v\n[END:S]\n[LST:L]\na=b\n[END]\n", 0, "Sections: 1; tables: 0; lists: 1; dictionaries: 0; texts: 0; encoded: 0."),
+            ("empty.ini", "", 0, "Sections: 0; tables: 0; lists: 0; dictionaries: 0; texts: 0; encoded: 0."),
+            ("dictionary.ini", "[DICT:CHANNELS]\nx=3\ny=3.14\n[END]\n", 0, "dictionaries: 1; texts: 0; encoded: 0."),
+            ("text.ini", "[TXT:NOTES]\n  café.;  \n\n## literal\nx=a=b\n[END:NOTES]\n", 0, "texts: 1; encoded: 0."),
+            ("base64.ini", "[B64:DATA]\nAAE\n## comment\nC/4A=\n[END:DATA]\n", 0, "encoded: 1."),
+            ("invalid-base64.ini", "[BASE64:BAD]\nnot-base64!\n", 1, "Invalid Base64 data in block 'BAD'."),
+            ("duplicate-base64.ini", "[B64:B]\n[BASE64:B]\n", 1, "ArgumentException:"),
+            ("base64-end.ini", "[B64:B]\n[END:OTHER]\n", 1, "FormatException:"),
             ("duplicate-text.ini", "[TXT:T]\n[TEXT:T]\n", 1, "ArgumentException:"),
             ("text-end.ini", "[TEXT:T]\n[END:OTHER]\n", 1, "FormatException:"),
             ("duplicate-dictionary.ini", "[DICT:D]\nx=1\nx=2\n", 1, "ArgumentException:"),
@@ -68,6 +72,7 @@ def main():
             "--tables": "Tables:\nAlpha\nZulu\n",
             "--lists": "Lists:\nAlpha\nZulu\n",
             "--texts": "Texts:\n",
+            "--encoded": "Encoded:\n",
             "--parameters": "Parameters:\nA\na\nshared\nz\n",
         }
         for option, output in outputs.items():
@@ -125,6 +130,19 @@ def main():
         check(["text.ini", "--rewrite", "text-copy.ini"], 0, "", exact=True)
         assert (root / "text-copy.ini").read_text(encoding="utf-8") == text_canonical
         check(["text-copy.ini", "--rewrite"], 0, text_canonical, exact=True)
+        check(["base64.ini", "--encoded"], 0, "Encoded:\nDATA\n", exact=True)
+        for identifier in ("ENCODED", "ENC"):
+            encoded_path = root / (identifier + ".ini")
+            encoded_path.write_text("[" + identifier + ":DATA]\nAAEC/4A=\n", encoding="utf-8")
+            check([encoded_path.name, "--encoded"], 0, "Encoded:\nDATA\n", exact=True)
+            check([encoded_path.name, "--rewrite"], 0, "[ENCODED:DATA]\nAAEC/4A=\n", exact=True)
+        base64_canonical = "[ENCODED:DATA]\nAAEC/4A=\n"
+        check(["base64.ini", "--rewrite"], 0, base64_canonical, exact=True)
+        check(["base64.ini", "--rewrite", "base64-copy.ini"], 0, "", exact=True)
+        assert (root / "base64-copy.ini").read_text(encoding="utf-8") == base64_canonical
+        check(["base64-copy.ini", "--rewrite"], 0, base64_canonical, exact=True)
+        check(["invalid-base64.ini", "--rewrite", "base64-copy.ini"], 1, "FormatException:", True)
+        assert (root / "base64-copy.ini").read_text(encoding="utf-8") == base64_canonical
         unicode_file = root / "unicode.ini"
         unicode_file.write_text("## comment\n[SEC:É]\nname=caffè\n[END]\n", encoding="utf-8")
         check([unicode_file.name, "--rewrite"], 0, "[É]\nname=caffè;\n", exact=True)

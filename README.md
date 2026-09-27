@@ -4,13 +4,13 @@ IniLike is a standalone C# library for reading INI-like configuration files with
 It targets .NET Framework 3.5. 
 The namespace and assembly name are **ConfigurationFilesReader**, and the public class is `ConfigurationFilesReader.ConfigurationFile`.
 
-The implementation uses one partial class across eight source files in
+The implementation uses one partial class across nine source files in
 `ConfigurationFilesReader/`: `ConfigurationFile.cs` holds shared settings and
 constructors; `ConfigurationFile.Parsing.cs` handles loading;
 `ConfigurationFile.Persistence.cs` handles dump/save and round-trip validation.
 `ConfigurationFile.Sections.cs`, `ConfigurationFile.Tables.cs`,
-`ConfigurationFile.Dictionaries.cs`, `ConfigurationFile.Lists.cs` and
-`ConfigurationFile.Texts.cs` hold the
+`ConfigurationFile.Dictionaries.cs`, `ConfigurationFile.Lists.cs`,
+`ConfigurationFile.Texts.cs` and `ConfigurationFile.Encoded.cs` hold the
 respective storage and access methods, including parameter methods in Sections.
 
 ## File format
@@ -54,17 +54,29 @@ second; 20; inactive;
   their lines joined with `\n` (without an added final newline); original CR/LF
   line-ending style is not retained. Empty and missing blocks return `""`;
   `listTexts()` distinguishes an existing empty block from a missing one.
-- A section, table, list, dictionary or text block may end with `[END]` or `[END:NAME]`. The closing name, when supplied
+- `[ENCODED:NAME]` and `[ENC:NAME]` contain one Base64-encoded binary payload.
+  `[BASE64:NAME]` and `[B64:NAME]` remain accepted aliases for the same block type.
+  Data may span multiple lines, even within a four-character group. Blank lines
+  and full-line comments are ignored; spaces, tabs and line breaks within the
+  encoded data are accepted. Padding `=` is retained and punctuation is not
+  stripped. Standard Base64 decoding uses `Convert.FromBase64String`; malformed
+  input (including URL-safe `-`/`_` variants) throws `FormatException` during loading,
+  with the block name in the diagnostic. Empty blocks decode to an empty byte array.
+  `getEncoded(name)` returns decoded bytes, without interpreting them as text.
+  Encoded blocks have their own case-sensitive name space and follow the same
+  header transitions and optional `END` markers as lists.
+- A section, table, list, dictionary, text or encoded block may end with `[END]` or `[END:NAME]`. The closing name, when supplied
   for an active block, must match its name (after trimming); a mismatch throws
   `FormatException`. Closing markers are not sections or table rows. Subsequent
   data is ignored until another block header. A closing marker outside
   block also resets the parser to that state. Without a closing marker, the
   next block header or end of file ends the block. Saving uses the canonical
   `[NAME]`, `[TABLE:NAME]`, `[LIST:NAME]` and `[DICT:NAME]` forms without closing markers. Text blocks are saved as `[TEXT:NAME]` followed
-  by raw content lines and `[END]`.
+  by raw content lines and `[END]`. Encoded blocks use `[ENCODED:NAME]` and a single
+  canonical Base64 data line without delimiters or an end marker.
 - Section, key, and table names are **case-sensitive**. The `SEC:`, `SECTION:`,
-  `TABLE:`, `TBL:`, `LIST:`, `LST:`, `DICT:`, `DICTIONARY:`, `TEXT:`, `TXT:` and `END` keywords
-  must be uppercase. Sections, tables, lists, dictionaries and text blocks have separate name spaces and may
+  `TABLE:`, `TBL:`, `LIST:`, `LST:`, `DICT:`, `DICTIONARY:`, `TEXT:`, `TXT:`, `ENCODED:`, `ENC:`, `BASE64:`, `B64:` and `END` keywords
+  must be uppercase. Sections, tables, lists, dictionaries, text and encoded blocks have separate name spaces and may
   share a name.
 - Outside text blocks, blank lines and lines starting with any nonempty prefix in `parComment` after
   trimming are ignored. The default prefix is `##`. Matching is ordinal and
@@ -101,6 +113,7 @@ Example configuration files are in [`examples/`](examples/):
 | [lists.ini](examples/lists.ini) | `LIST`/`LST`, plain items and literal assignments, repeated items and empty lists. |
 | [dictionaries.ini](examples/dictionaries.ini) | `DICT`/`DICTIONARY`, string key/value entries and optional endings. |
 | [texts.ini](examples/texts.ini) | Raw Unicode text, blank lines, punctuation and transitions using `TEXT`/`TXT`. |
+| [encoded.ini](examples/encoded.ini) | `ENCODED`/`ENC`, legacy aliases, wrapped Base64 data and empty blocks. |
 | [bench.ini](examples/bench.ini) | Combined sections, tables and lists, including shared names across block types. |
 
 Load an example from the repository root with
@@ -200,6 +213,9 @@ classDiagram
         %% Text blocks
         +listTexts() List~string~
         +getText(string TextName) string
+        %% Encoded blocks
+        +listEncoded() List~string~
+        +getEncoded(string BlockName) byte[]
         %% Persistence
         +dump() StreamWriter
         +dump(StreamWriter Writer) void
@@ -243,6 +259,8 @@ Relative paths are resolved against the working directory when their path object
 | `listDictionaries()` | Returns an independent, ordinally sorted snapshot of dictionary names. |
 | `getText(string TextName)` | Returns raw text lines joined with LF, or an empty string for a missing block. Null throws `ArgumentNullException`. Does not create entries or save. |
 | `listTexts()` | Returns an independent, ordinally sorted snapshot of text block names. |
+| `getEncoded(string BlockName)` | Returns an independent decoded `byte[]`, or an empty array for a missing block. Null throws `ArgumentNullException`. Does not create entries or save. |
+| `listEncoded()` | Returns an independent, ordinally sorted snapshot of encoded block names. |
 | `listSections()` | Returns section names, excluding tables. |
 | `listParameters(string Section)` | Returns parameter names in the specified section. Missing or empty sections return an empty list; null throws `ArgumentNullException`. |
 | `listParameters()` | Returns distinct parameter names across all sections. The same name in multiple sections appears once; names differing in case remain distinct. |
@@ -281,6 +299,25 @@ List<string> textNames = config.listTexts();
 The returned string is a snapshot; changing a local string does not modify the
 configuration. Neither text accessor creates entries or writes files, regardless
 of `autoUpdateRegistry` or `autoSaveRegistry`.
+
+Binary data can be retrieved directly:
+
+```ini
+[ENCODED:PAYLOAD]
+AAEC/4A=
+[END:PAYLOAD]
+```
+
+```csharp
+byte[] payload = config.getEncoded("PAYLOAD"); // 0, 1, 2, 255, 128
+List<string> binaryNames = config.listEncoded();
+```
+
+The returned array is an independent copy; changes to it do not modify the
+configuration. Both accessors leave the registry and files unchanged, regardless
+of automatic-update/save settings. Use `listEncoded()` to distinguish an empty
+block from a missing one. Decoded bytes are retained in memory; dump/save re-encode
+them canonically, preserving the bytes rather than the input wrapping or comments.
 
 ### Saving
 
@@ -331,7 +368,7 @@ config.save(new System.IO.FileInfo("backups"), "config.ini");
 ```
 
 All overloads save the current in-memory sections, parameters, table rows, list
-items, dictionary entries and text blocks.
+items, dictionary entries, text blocks and Base64 data.
 Explicit destinations do not change the original path used by `save()`. An
 in-memory configuration always needs an explicit destination, even after its
 first save. Parent directories must already exist; null arguments are rejected.
@@ -341,7 +378,8 @@ and the current order of table rows and list items. Comments, source ordering an
 formatting outside text content are not preserved. Text content retains its raw
 lines, including whitespace and comment-looking lines. Saving uses the standard `=` separator and `;`
 terminator regardless of mutations to the public delimiter arrays; text content
-has no added terminators.
+has no added terminators. Base64 data also has no added terminators, and its
+decoded bytes are included in round-trip validation.
 
 `save` obtains the serialized bytes from `dump()`, copies them to a temporary file
 in the destination directory, closes that file, and reloads it with
@@ -477,7 +515,7 @@ The command prints a result summary and exits with a nonzero status if a build o
 
 The suite covers:
 
-- Sections, tables, mutable lists, raw Unicode text blocks, and transitions between blocks.
+- Sections, tables, mutable lists, raw Unicode text blocks, Base64 binary data, and transitions between blocks.
 - Comments, whitespace, delimiters, Unicode, and case-sensitive names.
 - Defaults for every getter overload, boolean conversion, and numeric conversion
   under three cultures, including integer boundaries and overflow behavior.

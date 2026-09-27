@@ -63,6 +63,10 @@ namespace ConfigurationFilesReader
                 }
                 Writer.WriteLine("[END]");
             }
+            foreach (string Name in listEncoded()) {
+                Writer.WriteLine("[ENCODED:" + Name + "]");
+                Writer.WriteLine(Convert.ToBase64String(dictEncoded[Name]));
+            }
             Writer.Flush();
         }
 
@@ -118,6 +122,8 @@ namespace ConfigurationFilesReader
                 ConfigurationFile Reloaded;
                 try {
                     Reloaded = new ConfigurationFile(TemporaryPath);
+                } catch (FormatException Error) {
+                    throw new InvalidOperationException("The configuration cannot be represented by the INI-like format.", Error);
                 } catch (ArgumentException Error) {
                     throw new InvalidOperationException("The configuration cannot be represented by the INI-like format.", Error);
                 }
@@ -139,7 +145,7 @@ namespace ConfigurationFilesReader
         // Validate serialized data with the same parser used by callers.
         private bool hasSameData(ConfigurationFile Other)
         {
-            if (dictSections.Count != Other.dictSections.Count || dictTables.Count != Other.dictTables.Count || dictLists.Count != Other.dictLists.Count || dictDictionaries.Count != Other.dictDictionaries.Count || dictTexts.Count != Other.dictTexts.Count) {
+            if (dictSections.Count != Other.dictSections.Count || dictTables.Count != Other.dictTables.Count || dictLists.Count != Other.dictLists.Count || dictDictionaries.Count != Other.dictDictionaries.Count || dictTexts.Count != Other.dictTexts.Count || dictEncoded.Count != Other.dictEncoded.Count) {
                 return false;
             }
             foreach (KeyValuePair<string, strDictionary> SecName in dictSections) {
@@ -183,6 +189,17 @@ namespace ConfigurationFilesReader
                 }
                 for (int Index = 0; Index < Lines.Count; Index++) {
                     if (Text.Value[Index] != Lines[Index]) {
+                        return false;
+                    }
+                }
+            }
+            foreach (KeyValuePair<string, byte[]> Block in dictEncoded) {
+                byte[] Data;
+                if (!Other.dictEncoded.TryGetValue(Block.Key, out Data) || Block.Value.Length != Data.Length) {
+                    return false;
+                }
+                for (int Index = 0; Index < Data.Length; Index++) {
+                    if (Block.Value[Index] != Data[Index]) {
                         return false;
                     }
                 }

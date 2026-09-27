@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace ConfigurationFilesReader
 {
@@ -9,7 +10,7 @@ namespace ConfigurationFilesReader
 
     public partial class ConfigurationFile
     {
-        private enum SectionType { None = 0, Section, Table, List, Dictionary, Text };
+        private enum SectionType { None = 0, Section, Table, List, Dictionary, Text, Encoded };
 
         private readonly Dictionary<SectionType, List<string>> sectionIdentifier = new Dictionary<SectionType, List<string>> {
             { SectionType.None, new List<string> { "END" } },
@@ -17,7 +18,8 @@ namespace ConfigurationFilesReader
             { SectionType.Table, new List<string> { "TABLE", "TBL", "TAB" } },
             { SectionType.List, new List<string> { "LIST", "LST" } },
             { SectionType.Dictionary, new List<string> { "DICT", "DICTIONARY" } },
-            { SectionType.Text, new List<string> { "TEXT", "TXT" } }
+            { SectionType.Text, new List<string> { "TEXT", "TXT" } },
+            { SectionType.Encoded, new List<string> { "ENCODED", "ENC", "BASE64", "B64" } }
         };
 
         // Unrecognized identifiers remain plain section names. A null name marks an unnamed end.
@@ -76,6 +78,7 @@ namespace ConfigurationFilesReader
         {
             string currentParent = "";
             SectionType reading = SectionType.None;
+            StringBuilder Encoded = new StringBuilder();
 
             string currentLine;
             while ((currentLine = Reader.ReadLine()) != null) {
@@ -92,6 +95,10 @@ namespace ConfigurationFilesReader
                         !String.Equals(Name, currentParent, StringComparison.Ordinal)) {
                         throw new FormatException("End label does not match the current block: '" + currentParent + "'.");
                     }
+                    if (reading == SectionType.Encoded) {
+                        dictEncoded[currentParent] = decodeBase64(currentParent, Encoded.ToString());
+                        Encoded.Length = 0;
+                    }
                     reading = Type;
                     currentParent = Type == SectionType.None ? "" : Name;
                     switch (reading) {
@@ -104,6 +111,9 @@ namespace ConfigurationFilesReader
                         case SectionType.List:
                             dictLists.Add(currentParent, new List<string>());
                             break;
+                        case SectionType.Encoded:
+                            dictEncoded.Add(currentParent, new byte[0]);
+                            break;
                         case SectionType.Text:
                             dictTexts.Add(currentParent, new List<string>());
                             break;
@@ -111,6 +121,8 @@ namespace ConfigurationFilesReader
                             dictDictionaries.Add(currentParent, new strDictionary());
                             break;
                     }
+                } else if (reading == SectionType.Encoded) {
+                    Encoded.Append(currentLine);
                 } else if (reading == SectionType.Text) {
                     dictTexts[currentParent].Add(RawLine);
                 } else if (reading == SectionType.Section || reading == SectionType.Dictionary) {
@@ -123,6 +135,9 @@ namespace ConfigurationFilesReader
                     List<string> Rows = reading == SectionType.Table ? dictTables[currentParent] : dictLists[currentParent];
                     Rows.Add(currentLine.TrimEnd(parEndLineDelimiter));
                 }
+            }
+            if (reading == SectionType.Encoded) {
+                dictEncoded[currentParent] = decodeBase64(currentParent, Encoded.ToString());
             }
         }
 
