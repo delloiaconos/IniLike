@@ -31,7 +31,7 @@ second; 20; inactive;
 
 - `[NAME]`, `[SEC:NAME]` and `[SECTION:NAME]` are equivalent section headers
   containing `key = value` pairs.
-- `[TABLE:NAME]` and `[TBL:NAME]` are equivalent table headers containing text rows.
+- `[TABLE:NAME]`, `[TBL:NAME]` and `[TAB:NAME]` are equivalent table headers containing text rows.
   The library returns a `List<string>`;
   callers are responsible for splitting rows into columns.
 - `[LIST:NAME]` and `[LST:NAME]` are equivalent list headers. Every data line is
@@ -119,6 +119,29 @@ config.setParameter("SERVER", "port", "8080");
 int port = config.getParameter("SERVER", "port", 80);
 ```
 
+To load directly from a readable stream:
+
+```csharp
+using (var stream = System.IO.File.OpenRead("config.ini"))
+{
+    var config = new ConfigurationFile(stream);
+    string host = config.getParameter("SERVER", "host", "localhost");
+    config.save("copy.ini");
+}
+```
+
+`ConfigurationFile(Stream Source)` reads from the current position to the end,
+using UTF-8 by default with BOM-based encoding detection, just like file loading.
+Non-seekable streams are supported. The caller retains ownership: the stream stays
+open on success and on errors, and its position is not restored. Null streams throw
+`ArgumentNullException`; unreadable streams throw `ArgumentException`. Parsing and
+I/O errors propagate to the caller.
+
+A stream-loaded configuration has no original file, even when passed a `FileStream`.
+Saving always requires an explicit destination; automatic creation with
+`autoSaveRegistry=true` fails before modifying the registry. Both runtime properties
+default to false. The same parser and file-format rules apply to files and streams.
+
 ## API reference
 
 The diagram shows the public API of the single partial `ConfigurationFile` class.
@@ -138,6 +161,7 @@ classDiagram
         +ConfigurationFile()
         +ConfigurationFile(string FileName)
         +ConfigurationFile(FileInfo FilePath)
+        +ConfigurationFile(Stream Source)
         +ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)
         %% Sections and parameters
         +checkSection(string SecName) bool
@@ -189,6 +213,7 @@ Relative paths are resolved against the working directory when their path object
 | `autoSaveRegistry` | Public get/set property, false by default. Saves the entire registry to its original file when a new parameter or section is created. Requires `autoUpdateRegistry=true` for creation through parameter methods. |
 | `ConfigurationFile(string filename)` | Loads the file immediately. Missing files and parsing errors cause exceptions. |
 | `ConfigurationFile(FileInfo FilePath)` | Loads the file represented by the typed path immediately. |
+| `ConfigurationFile(Stream Source)` | Loads from the current stream position, leaves it open, and has no original save destination. |
 | `ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)` | Combines the directory and filename and loads the resulting file immediately. |
 | `ConfigurationFile()` | Creates an empty container without loading a file; automatic creation is disabled. |
 | `checkSection(string)` | Checks for a section, excluding tables. Never creates sections or writes files. |
@@ -351,7 +376,8 @@ be used to set the property immediately after construction.
 Explicit `save` calls and automatic saves of newly created entries write changes
 to disk. Both use the same serialization, validation and replacement procedure.
 
-File readers and writers are disposed through `using` blocks, including on exceptions.
+Internally created readers and writers are disposed through `using` blocks, including on exceptions.
+Caller-supplied streams remain open.
 Concurrent changes are not synchronized.
 
 ## ConfigurationValidator

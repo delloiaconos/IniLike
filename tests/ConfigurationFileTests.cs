@@ -100,6 +100,92 @@ class ConfigurationFileTests
         throws<Exception>(delegate { new ConfigurationFile(BaseDirectory, "missing.ini"); });
     }
 
+    // Exercise streaming without allowing the parser to inspect or change position.
+    sealed class ForwardOnlyStream : MemoryStream
+    {
+        public bool FailReads;
+        public ForwardOnlyStream(byte[] Bytes) : base(Bytes) { }
+        public override bool CanSeek { get { return false; } }
+        public override long Length { get { throw new NotSupportedException(); } }
+        public override long Position {
+            get { throw new NotSupportedException(); }
+            set { throw new NotSupportedException(); }
+        }
+        public override long Seek(long Offset, SeekOrigin Origin) { throw new NotSupportedException(); }
+        public override int Read(byte[] Buffer, int Offset, int Count)
+        {
+            if (FailReads) { throw new IOException("Read failed."); }
+            return base.Read(Buffer, Offset, Math.Min(Count, 1));
+        }
+    }
+
+    static void streamConstructors()
+    {
+        const string Text = "## comment\n[SEC:S]\nk=café;\n[END:S]\nignored=value\n[TBL:T]\nrow;\n[END]\n[LST:L]\nx=a=b;\n[DICTIONARY:D]\nk=value;\n";
+        foreach (System.Text.Encoding Encoding in new System.Text.Encoding[] {
+            new System.Text.UTF8Encoding(false), new System.Text.UTF8Encoding(true),
+            System.Text.Encoding.Unicode, System.Text.Encoding.BigEndianUnicode }) {
+            using (MemoryStream Source = new MemoryStream()) {
+                Source.WriteByte(0xff);
+                byte[] Preamble = Encoding.GetPreamble();
+                Source.Write(Preamble, 0, Preamble.Length);
+                byte[] Bytes = Encoding.GetBytes(Text);
+                Source.Write(Bytes, 0, Bytes.Length);
+                Source.Position = 1;
+                ConfigurationFile Config = new ConfigurationFile(Source);
+                equal("café", get(Config, "S", "k"));
+                equal("fallback", get(Config, "S", "ignored"));
+                equal("row", Config.getTable("T")[0]);
+                equal("x=a=b", Config.getList("L")[0]);
+                equal("value", Config.getDictionary("D")["k"]);
+                equal(false, Config.autoUpdateRegistry);
+                equal(false, Config.autoSaveRegistry);
+                equal(true, Source.CanRead);
+                equal(Source.Length, Source.Position);
+                throws<InvalidOperationException>(delegate { Config.save(); });
+                Config.save("stream-copy.ini");
+                equal("café", get(new ConfigurationFile("stream-copy.ini"), "S", "k"));
+                throws<InvalidOperationException>(delegate { Config.save(); });
+                Config.autoUpdateRegistry = true;
+                Config.autoSaveRegistry = true;
+                throws<InvalidOperationException>(delegate { Config.addParameter("NEW", "k", "v"); });
+                equal(false, Config.checkSection("NEW"));
+            }
+        }
+        using (ForwardOnlyStream Source = new ForwardOnlyStream(System.Text.Encoding.UTF8.GetBytes(Text))) {
+            equal("café", get(new ConfigurationFile(Source), "S", "k"));
+            equal(true, Source.CanRead);
+        }
+        using (ForwardOnlyStream Source = new ForwardOnlyStream(new byte[0])) {
+            Source.FailReads = true;
+            throws<IOException>(delegate { new ConfigurationFile(Source); });
+            equal(true, Source.CanRead);
+        }
+        using (MemoryStream Source = new MemoryStream()) {
+            equal(0, new ConfigurationFile(Source).listSections().Count);
+            equal(true, Source.CanRead);
+        }
+        foreach (string Invalid in new string[] { "[S]\nk=1\nk=2\n", "[S]\n[END:OTHER]\n" }) {
+            using (MemoryStream Source = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(Invalid))) {
+                if (Invalid.Contains("OTHER")) {
+                    throws<FormatException>(delegate { new ConfigurationFile(Source); });
+                } else {
+                    throws<ArgumentException>(delegate { new ConfigurationFile(Source); });
+                }
+                equal(true, Source.CanRead);
+            }
+        }
+        throws<ArgumentNullException>(delegate { new ConfigurationFile((Stream)null); });
+        using (FileStream Source = new FileStream("write-only.ini", FileMode.Create, FileAccess.Write)) {
+            throws<ArgumentException>(delegate { new ConfigurationFile(Source); });
+            equal(true, Source.CanWrite);
+        }
+        using (StreamWriter Dump = load(Text).dump()) {
+            equal("café", get(new ConfigurationFile(Dump.BaseStream), "S", "k"));
+            equal(true, Dump.BaseStream.CanRead);
+        }
+    }
+
     static void fileHandles()
     {
         load("[S]\nk=value\n");
@@ -887,6 +973,7 @@ class ConfigurationFileTests
         test("save overloads preserve sections, tables and original destination", saving);
         test("save rejects unrepresentable data and preserves destinations on failure", saveFailures);
         test("name listings are sorted independent snapshots", listNames);
+        test("stream constructors preserve ownership, encoding and save boundaries", streamConstructors);
         test("string and typed path constructors", pathConstructors);
         test("file handles released after loading and parsing errors", fileHandles);
         test("empty container and all default overloads", defaults);

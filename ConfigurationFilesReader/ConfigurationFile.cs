@@ -36,6 +36,21 @@ namespace ConfigurationFilesReader
             }
         }
 
+        // Read from the current position without taking ownership of the stream.
+        public ConfigurationFile(Stream Source)
+            : this()
+        {
+            if (Source == null) {
+                throw new ArgumentNullException("Source");
+            }
+            if (!Source.CanRead) {
+                throw new ArgumentException("The stream must be readable.", "Source");
+            }
+            using (StreamReader Reader = new StreamReader(new BorrowedReadStream(Source))) {
+                loadReader(Reader);
+            }
+        }
+
         public ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)
             : this(combinePath(BaseDirectory, FileName))
         {
