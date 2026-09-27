@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text;
 
 namespace ConfigurationFilesReader
 {
@@ -18,11 +19,20 @@ namespace ConfigurationFilesReader
         // Return an independent copy of decoded bytes, or an empty array when missing.
         public byte[] getEncoded(string BlockName)
         {
+            return getEncoded(BlockName, false);
+        }
+
+        // When encoded is true, return canonical Base64 as ASCII bytes.
+        public byte[] getEncoded(string BlockName, bool encoded)
+        {
             if (BlockName == null) {
                 throw new ArgumentNullException("BlockName");
             }
             byte[] Data;
-            return dictEncoded.TryGetValue(BlockName, out Data) ? (byte[])Data.Clone() : new byte[0];
+            if (!dictEncoded.TryGetValue(BlockName, out Data)) {
+                return new byte[0];
+            }
+            return encoded ? Encoding.ASCII.GetBytes(Convert.ToBase64String(Data)) : (byte[])Data.Clone();
         }
 
         private static byte[] decodeBase64(string BlockName, string Encoded)

@@ -216,6 +216,7 @@ classDiagram
         %% Encoded blocks
         +listEncoded() List~string~
         +getEncoded(string BlockName) byte[]
+        +getEncoded(string BlockName, bool encoded) byte[]
         %% Persistence
         +dump() StreamWriter
         +dump(StreamWriter Writer) void
@@ -260,6 +261,7 @@ Relative paths are resolved against the working directory when their path object
 | `getText(string TextName)` | Returns raw text lines joined with LF, or an empty string for a missing block. Null throws `ArgumentNullException`. Does not create entries or save. |
 | `listTexts()` | Returns an independent, ordinally sorted snapshot of text block names. |
 | `getEncoded(string BlockName)` | Returns an independent decoded `byte[]`, or an empty array for a missing block. Null throws `ArgumentNullException`. Does not create entries or save. |
+| `getEncoded(string BlockName, bool encoded)` | With `false`, returns decoded bytes as above. With `true`, returns canonical Base64 as ASCII bytes in an independent `byte[]`, without line wrapping or comments. Empty/missing blocks return an empty array; null throws `ArgumentNullException`. Does not create entries or save. |
 | `listEncoded()` | Returns an independent, ordinally sorted snapshot of encoded block names. |
 | `listSections()` | Returns section names, excluding tables. |
 | `listParameters(string Section)` | Returns parameter names in the specified section. Missing or empty sections return an empty list; null throws `ArgumentNullException`. |
@@ -310,9 +312,13 @@ AAEC/4A=
 
 ```csharp
 byte[] payload = config.getEncoded("PAYLOAD"); // 0, 1, 2, 255, 128
+byte[] base64 = config.getEncoded("PAYLOAD", true); // ASCII bytes for AAEC/4A=
+string base64Text = System.Text.Encoding.ASCII.GetString(base64);
 List<string> binaryNames = config.listEncoded();
 ```
 
+The one-argument overload is equivalent to `getEncoded(name, false)`. Both overloads
+return `byte[]`; the flag selects decoded bytes or the Base64 representation.
 The returned array is an independent copy; changes to it do not modify the
 configuration. Both accessors leave the registry and files unchanged, regardless
 of automatic-update/save settings. Use `listEncoded()` to distinguish an empty

@@ -1111,8 +1111,38 @@ class ConfigurationFileTests
         equal(0, Directory.GetFiles(".", ".inilike-*.tmp").Length);
     }
 
+    static void encodedFlag()
+    {
+        const string Source = "[ENC:DATA]\nAAE\n## ignored\nC/4A=\n[ENC:EMPTY]\n";
+        ConfigurationFile Config = load(Source);
+        foreach (bool Enabled in new bool[] { false, true }) {
+            Config.autoUpdateRegistry = Enabled;
+            Config.autoSaveRegistry = Enabled;
+            equal("AAEC/4A=", Convert.ToBase64String(Config.getEncoded("DATA", false)));
+            equal("AAEC/4A=", System.Text.Encoding.ASCII.GetString(Config.getEncoded("DATA", true)));
+            equal(Convert.ToBase64String(Config.getEncoded("DATA")), Convert.ToBase64String(Config.getEncoded("DATA", false)));
+            foreach (bool Encoded in new bool[] { false, true }) {
+                equal(0, Config.getEncoded("EMPTY", Encoded).Length);
+                equal(0, Config.getEncoded("missing", Encoded).Length);
+                throws<ArgumentNullException>(delegate { Config.getEncoded(null, Encoded); });
+                byte[] Copy = Config.getEncoded("DATA", Encoded);
+                Copy[0] = 99;
+                equal((byte)0, Config.getEncoded("DATA")[0]);
+                equal("AAEC/4A=", System.Text.Encoding.ASCII.GetString(Config.getEncoded("DATA", true)));
+            }
+            equal(2, Config.listEncoded().Count);
+            equal(Source, File.ReadAllText("config.ini"));
+        }
+        Config.save();
+        equal("AAEC/4A=", System.Text.Encoding.ASCII.GetString(new ConfigurationFile("config.ini").getEncoded("DATA", true)));
+        foreach (string Value in new string[] { "Zg==", "Zm8=", "Zm9v" }) {
+            equal(Value, System.Text.Encoding.ASCII.GetString(load("[B64:B]\n" + Value).getEncoded("B", true)));
+        }
+    }
+
     static int Main()
     {
+        test("getEncoded flag selects raw bytes or independent Base64 ASCII bytes", encodedFlag);
         test("ENCODED, ENC, BASE64 and B64 decode binary data and preserve it through saving", encodedBlocks);
         test("TEXT and TXT preserve raw Unicode text with normal block transitions", textBlocks);
         test("DICT and DICTIONARY preserve independent string dictionaries", dictionaryBlocks);
