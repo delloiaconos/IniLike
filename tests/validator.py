@@ -1,4 +1,4 @@
-"""Exercise the real console application and its exit codes without changing inputs."""
+"""Exercise console validation, listings, rewriting and exit codes."""
 from pathlib import Path
 import subprocess
 import sys
@@ -82,7 +82,43 @@ def main():
         check(["--parameters", "--", dashed.name], 0, outputs["--parameters"], exact=True)
         assert listing.read_bytes() == original
         assert dashed.read_bytes() == original
-    print("PASS: {0} console validation checks; input files unchanged.".format(checked))
+        canonical = ("[Alpha]\nA=4;\nshared=3;\n[Plain]\na=5;\n[Zulu]\nshared=1;\nz=2;\n"
+                     "[TABLE:Alpha]\nrow;\n[TABLE:Zulu]\ntableOnly=8;\n"
+                     "[LIST:Alpha]\nitem;\n[LIST:Zulu]\nlistOnly=9;\n"
+                     "[DICT:Alpha]\nx=7;\n[DICT:Zulu]\ndictOnly=6;\n")
+        check([listing.name, "--rewrite"], 0, canonical, exact=True)
+        check(["--rewrite", listing.name], 0, canonical, exact=True)
+        check(["empty.ini", "--rewrite"], 0, "", exact=True)
+        check(["--rewrite"], 2, "expected exactly one", True)
+        check([listing.name, "--rewrite", ""], 2, "expected exactly one", True)
+        check([listing.name, "--rewrite", "a.ini", "b.ini"], 2, "expected exactly one", True)
+        for option in outputs:
+            check([listing.name, "--rewrite", option], 2, "cannot be combined", True)
+        destination = root / "rewritten.ini"
+        check([listing.name, "--rewrite", destination.name], 0, "", exact=True)
+        assert destination.read_text(encoding="utf-8") == canonical
+        check([destination.name, "--rewrite"], 0, canonical, exact=True)
+        destination.write_text("old contents", encoding="utf-8")
+        check([listing.name, "--rewrite", str(destination)], 0, "", exact=True)
+        assert destination.read_text(encoding="utf-8") == canonical
+        check(["mismatch.ini", "--rewrite", str(destination)], 1, "Error loading", True)
+        assert destination.read_text(encoding="utf-8") == canonical
+        check([listing.name, "--rewrite", "missing-directory/out.ini"], 1, "Error rewriting", True)
+        check([listing.name, "--rewrite", str(root)], 1, "Error rewriting", True)
+        assert not list(root.glob(".inilike-*.tmp"))
+        subdir = root / "output folder"
+        subdir.mkdir()
+        check([listing.name, "--rewrite", "output folder/copy file.ini"], 0, "", exact=True)
+        assert (subdir / "copy file.ini").read_text(encoding="utf-8") == canonical
+        check([listing.name, "--rewrite", "--", "-output.ini"], 0, "", exact=True)
+        assert (root / "-output.ini").read_text(encoding="utf-8") == canonical
+        assert listing.read_bytes() == original
+        check([destination.name, "--rewrite", destination.name], 0, "", exact=True)
+        assert destination.read_text(encoding="utf-8") == canonical
+        unicode_file = root / "unicode.ini"
+        unicode_file.write_text("## comment\n[SEC:É]\nname=caffè\n[END]\n", encoding="utf-8")
+        check([unicode_file.name, "--rewrite"], 0, "[É]\nname=caffè;\n", exact=True)
+    print("PASS: {0} console validation checks; rewrite and input preservation verified.".format(checked))
 
 
 if __name__ == "__main__":
