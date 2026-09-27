@@ -4,6 +4,14 @@ IniLike is a standalone C# library for reading INI-like configuration files with
 It targets .NET Framework 3.5. 
 The namespace and assembly name are **ConfigurationFilesReader**, and the public class is `ConfigurationFilesReader.ConfigurationFile`.
 
+The implementation uses one partial class across seven source files in
+`ConfigurationFilesReader/`: `ConfigurationFile.cs` holds shared settings and
+constructors; `ConfigurationFile.Parsing.cs` handles loading;
+`ConfigurationFile.Persistence.cs` handles dump/save and round-trip validation.
+`ConfigurationFile.Sections.cs`, `ConfigurationFile.Tables.cs`,
+`ConfigurationFile.Dictionaries.cs` and `ConfigurationFile.Lists.cs` hold the
+respective storage and access methods, including parameter methods in Sections.
+
 ## File format
 
 ```ini
