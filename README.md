@@ -366,12 +366,35 @@ mono ConfigurationValidator/bin/Release/ConfigurationValidator.exe examples/benc
 mono ConfigurationValidator/bin/Release/ConfigurationValidator.exe --help
 ```
 
+To inspect names in a configuration, add one or more listing options before or
+after the file path:
+
+```sh
+mono ConfigurationValidator/bin/Release/ConfigurationValidator.exe examples/bench.ini --sections --parameters
+```
+
+| Option | Output |
+| --- | --- |
+| `--sections` | Section names, including plain, `SEC` and `SECTION` headers. |
+| `--dictionaries` | Dictionary names (`DICT` or `DICTIONARY`). |
+| `--tables` | Table names (`TBL` or `TABLE`). |
+| `--lists` | List names (`LST` or `LIST`). |
+| `--parameters` | Distinct parameter names across all sections, excluding dictionary entries and table/list contents. |
+
+Listing options replace the normal success summary with category headings and
+one name per line, sorted ordinally and case-sensitively. Values are not printed;
+parameters shared by multiple sections appear once. Empty categories print only
+their heading. Combined options appear in the order shown above, and repeated
+options print once. Loading and error reporting remain the same, with no partial
+listing if loading fails. Unknown options return exit code 2. Use `--` before a
+file path beginning with `-`; use `--help` or `-h` alone for help.
+
 On Windows, run `ConfigurationValidator.exe "C:\path with spaces\file.ini"`
 directly. Keep `ConfigurationFilesReader.dll` and `ConfigurationValidator.exe.config`
 alongside the executable; the project build copies them there. The executable
 targets .NET Framework 3.5; its runtime configuration permits CLR 4 or CLR 2.
 
-Successful loading prints section, table, list and dictionary counts to stdout. Failures print
+Without listing options, successful loading prints section, table, list and dictionary counts to stdout. Failures print
 the exception type and original library message (including inner exceptions) to
 stderr, without a stack trace. The first loading error stops validation; the tool
 does not save or modify the input file.

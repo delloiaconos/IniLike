@@ -12,12 +12,14 @@ def main():
     with tempfile.TemporaryDirectory(prefix="inilike-validator-") as folder:
         root = Path(folder)
 
-        def check(arguments, code, message, error=False):
+        def check(arguments, code, message, error=False, exact=False):
             nonlocal checked
             result = subprocess.run(["mono", str(executable)] + arguments, cwd=folder,
                                     capture_output=True, text=True, timeout=30)
             assert result.returncode == code, result
             assert message in (result.stderr if error else result.stdout), result
+            if exact:
+                assert result.stdout == message, result
             if code == 0:
                 assert not result.stderr, result.stderr
             elif error:
@@ -51,6 +53,35 @@ def main():
             check([name], code, message, error=code != 0)
             assert path.read_bytes() == original
         assert sorted(p.name for p in root.iterdir()) == sorted(case[0] for case in cases)
+        listing = root / "listing file.ini"
+        listing.write_text("[SECTION:Zulu]\nshared=1\nz=2\n[SEC:Alpha]\nshared=3\nA=4\n"
+                           "[Plain]\na=5\n[DICT:Zulu]\ndictOnly=6\n[DICTIONARY:Alpha]\nx=7\n"
+                           "[TBL:Zulu]\ntableOnly=8\n[TABLE:Alpha]\nrow\n"
+                           "[LST:Zulu]\nlistOnly=9\n[LIST:Alpha]\nitem\n", encoding="utf-8")
+        original = listing.read_bytes()
+        outputs = {
+            "--sections": "Sections:\nAlpha\nPlain\nZulu\n",
+            "--dictionaries": "Dictionaries:\nAlpha\nZulu\n",
+            "--tables": "Tables:\nAlpha\nZulu\n",
+            "--lists": "Lists:\nAlpha\nZulu\n",
+            "--parameters": "Parameters:\nA\na\nshared\nz\n",
+        }
+        for option, output in outputs.items():
+            check([option, listing.name], 0, output, exact=True)
+            check([listing.name, option], 0, output, exact=True)
+            check([option, "empty.ini"], 0, output.splitlines()[0] + "\n", exact=True)
+            check([option], 2, "expected exactly one", True)
+        check(list(reversed(outputs)) + [listing.name], 0, "".join(outputs.values()), exact=True)
+        check(["--sections", listing.name, "--sections"], 0, outputs["--sections"], exact=True)
+        check(["--unknown", listing.name], 2, "unknown option", True)
+        check(["--sections", listing.name, "empty.ini"], 2, "expected exactly one", True)
+        check(["--parameters", "missing.ini"], 1, "Unable to open file:", True)
+        check(["--sections", "mismatch.ini"], 1, "FormatException:", True)
+        dashed = root / "--sections"
+        dashed.write_bytes(original)
+        check(["--parameters", "--", dashed.name], 0, outputs["--parameters"], exact=True)
+        assert listing.read_bytes() == original
+        assert dashed.read_bytes() == original
     print("PASS: {0} console validation checks; input files unchanged.".format(checked))
 
 
