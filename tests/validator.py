@@ -46,6 +46,12 @@ def main():
             ("base64-end.ini", "[B64:B]\n[END:OTHER]\n", 1, "FormatException:"),
             ("duplicate-text.ini", "[TXT:T]\n[TEXT:T]\n", 1, "ArgumentException:"),
             ("text-end.ini", "[TEXT:T]\n[END:OTHER]\n", 1, "FormatException:"),
+            ("include.ini", "[INC:dictionary.ini]\n[END:dictionary.ini]\n", 0, "dictionaries: 1;"),
+            ("include-missing.ini", "[INPUT:no-such-file.ini]\n", 1, "FileNotFoundException:"),
+            ("include-empty.ini", "[LOAD: ]\n", 1, "requires a filename"),
+            ("include-cycle.ini", "[LINK:./include-cycle.ini]\n", 1, "Include cycle detected"),
+            ("include-end.ini", "[INC:dictionary.ini]\n[END:other.ini]\n", 1, "FormatException:"),
+            ("include-duplicate.ini", "[INC:dictionary.ini]\n[INCLUDE:dictionary.ini]\n", 1, "ArgumentException:"),
             ("duplicate-dictionary.ini", "[DICT:D]\nx=1\nx=2\n", 1, "ArgumentException:"),
             ("dictionary-end.ini", "[DICTIONARY:D]\nx=1\n[END:OTHER]\n", 1, "End label does not match the current block: 'D'."),
             ("ignored.ini", "outside=x\n[S]\ninvalid\nkey=a=b\n", 0, "Configuration loaded successfully"),
@@ -143,6 +149,16 @@ def main():
         check(["base64-copy.ini", "--rewrite"], 0, base64_canonical, exact=True)
         check(["invalid-base64.ini", "--rewrite", "base64-copy.ini"], 1, "FormatException:", True)
         assert (root / "base64-copy.ini").read_text(encoding="utf-8") == base64_canonical
+        included_original = (root / "dictionary.ini").read_bytes()
+        include_original = (root / "include.ini").read_bytes()
+        check(["include.ini", "--dictionaries"], 0, "Dictionaries:\nCHANNELS\n", exact=True)
+        included_dump = "[DICT:CHANNELS]\nx=3;\ny=3.14;\n"
+        check(["include.ini", "--rewrite"], 0, included_dump, exact=True)
+        check(["include.ini", "--rewrite", "include-copy.ini"], 0, "", exact=True)
+        assert (root / "include-copy.ini").read_text(encoding="utf-8") == included_dump
+        assert (root / "dictionary.ini").read_bytes() == included_original
+        assert (root / "include.ini").read_bytes() == include_original
+        check(["include-copy.ini", "--rewrite"], 0, included_dump, exact=True)
         unicode_file = root / "unicode.ini"
         unicode_file.write_text("## comment\n[SEC:É]\nname=caffè\n[END]\n", encoding="utf-8")
         check([unicode_file.name, "--rewrite"], 0, "[É]\nname=caffè;\n", exact=True)

@@ -73,6 +73,14 @@ replacing an existing destination; specifying the input path as the destination
 rewrites it in place. Without an explicit matching destination, the input is
 unchanged. Loading or writing failures are reported on stderr with exit code 1.
 
+Include directives (`INCLUDE`, `INC`, `INPUT`, `LINK`, `LOAD`) are expanded during
+loading. Relative paths resolve from the validator process's working directory,
+including for nested includes. Counts and listings include imported blocks.
+Rewriting produces a self-contained configuration with the combined data; include
+directives are not preserved and included files are left unchanged unless explicitly
+selected as the output destination. Missing files, cycles and included-file parsing
+errors produce exit code 1.
+
 ## Diagnostics and exit codes
 
 Without listing or rewrite options, successful loading prints section, table,

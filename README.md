@@ -65,7 +65,23 @@ second; 20; inactive;
   `getEncoded(name)` returns decoded bytes, without interpreting them as text.
   Encoded blocks have their own case-sensitive name space and follow the same
   header transitions and optional `END` markers as lists.
-- A section, table, list, dictionary, text or encoded block may end with `[END]` or `[END:NAME]`. The closing name, when supplied
+- `[INCLUDE:filename.ini]` loads another configuration file into the current
+  registry. `INC`, `INPUT`, `LINK` and `LOAD` are equivalent identifiers. Absolute
+  paths are accepted; relative paths (including nested includes) resolve from the
+  process's current working directory, not the including file's directory.
+  Filenames are trimmed but are not quoted or stripped of punctuation.
+  Included files use the same parser settings and have independent block state;
+  their contents cannot continue a block in the including file. All block types
+  share their existing namespaces across files, so duplicate block names still throw.
+  Includes are processed immediately and are not stored as sections. Following
+  non-header lines are ignored until the next block, and `END` is optional.
+  `[END:filename.ini]` must match the trimmed filename as written in the include
+  header, using the usual case-sensitive label check. Missing/unreadable files
+  and parsing errors propagate. Empty filenames and include cycles throw
+  `FormatException`; nesting is limited to 128 simultaneously open files to
+  prevent unbounded recursion through filesystem aliases. Repeated non-recursive
+  includes are processed again and are subject to normal duplicate checks.
+- A section, table, list, dictionary, text, encoded or include block may end with `[END]` or `[END:NAME]`. The closing name, when supplied
   for an active block, must match its name (after trimming); a mismatch throws
   `FormatException`. Closing markers are not sections or table rows. Subsequent
   data is ignored until another block header. A closing marker outside
@@ -75,7 +91,7 @@ second; 20; inactive;
   by raw content lines and `[END]`. Encoded blocks use `[ENCODED:NAME]` and a single
   canonical Base64 data line without delimiters or an end marker.
 - Section, key, and table names are **case-sensitive**. The `SEC:`, `SECTION:`,
-  `TABLE:`, `TBL:`, `LIST:`, `LST:`, `DICT:`, `DICTIONARY:`, `TEXT:`, `TXT:`, `ENCODED:`, `ENC:`, `BASE64:`, `B64:` and `END` keywords
+  `TABLE:`, `TBL:`, `LIST:`, `LST:`, `DICT:`, `DICTIONARY:`, `TEXT:`, `TXT:`, `ENCODED:`, `ENC:`, `BASE64:`, `B64:`, `INCLUDE:`, `INC:`, `INPUT:`, `LINK:`, `LOAD:` and `END` keywords
   must be uppercase. Sections, tables, lists, dictionaries, text and encoded blocks have separate name spaces and may
   share a name.
 - Outside text blocks, blank lines and lines starting with any nonempty prefix in `parComment` after
@@ -166,6 +182,29 @@ A stream-loaded configuration has no original file, even when passed a `FileStre
 Saving always requires an explicit destination; automatic creation with
 `autoSaveRegistry=true` fails before modifying the registry. Both runtime properties
 default to false. The same parser and file-format rules apply to files and streams.
+
+### Including other files
+
+```ini
+[INCLUDE:filename.ini]
+
+[INC:config2.ini]
+[END]
+
+[LINK:settings/common.ini]
+[END:settings/common.ini]
+```
+
+Run the application from the directory against which these paths should resolve.
+Includes also work when constructing from a stream. Loaded content is available
+through the existing getters and listing methods; there is no separate include
+registry. Full paths can be used when the working directory is not fixed.
+
+Dump/save writes the combined data as ordinary blocks, replacing include directives
+with their loaded content. It never writes back to the included files automatically.
+The original save destination remains the top-level file; configurations loaded
+from a stream still need an explicit destination. As with other save overloads,
+explicitly choosing an included file as a destination replaces that file.
 
 ## API reference
 
@@ -522,6 +561,7 @@ The command prints a result summary and exits with a nonzero status if a build o
 The suite covers:
 
 - Sections, tables, mutable lists, raw Unicode text blocks, Base64 binary data, and transitions between blocks.
+- Includes from files and streams, current-directory paths, duplicates, cycles, nesting limits, and flattened saves.
 - Comments, whitespace, delimiters, Unicode, and case-sensitive names.
 - Defaults for every getter overload, boolean conversion, and numeric conversion
   under three cultures, including integer boundaries and overflow behavior.

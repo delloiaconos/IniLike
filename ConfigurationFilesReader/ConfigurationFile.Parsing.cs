@@ -10,9 +10,10 @@ namespace ConfigurationFilesReader
 
     public partial class ConfigurationFile
     {
-        private enum SectionType { None = 0, Section, Table, List, Dictionary, Text, Encoded };
+        private enum SectionType { None = 0, Section, Table, List, Dictionary, Text, Encoded, INCLUDE };
 
         private readonly Dictionary<SectionType, List<string>> sectionIdentifier = new Dictionary<SectionType, List<string>> {
+            { SectionType.INCLUDE, new List<string> { "INCLUDE", "INC", "INPUT", "LINK", "LOAD" } },
             { SectionType.None, new List<string> { "END" } },
             { SectionType.Section, new List<string> { "SECTION", "SEC" } },
             { SectionType.Table, new List<string> { "TABLE", "TBL", "TAB" } },
@@ -21,6 +22,9 @@ namespace ConfigurationFilesReader
             { SectionType.Text, new List<string> { "TEXT", "TXT" } },
             { SectionType.Encoded, new List<string> { "ENCODED", "ENC", "BASE64", "B64" } }
         };
+
+        private readonly HashSet<string> loadingFiles = new HashSet<string>(
+            Path.DirectorySeparatorChar == '\\' ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
         // Unrecognized identifiers remain plain section names. A null name marks an unnamed end.
         private bool tryReadBlockHeader(string Line, out SectionType Type, out string Name)
@@ -68,10 +72,32 @@ namespace ConfigurationFilesReader
                 return false;
             }
 
-            using (StreamReader srFile = FilePath.OpenText()) {
-                loadReader(srFile);
-            }
+            loadIncludedFile(FilePath.FullName);
             return true;
+        }
+
+        // Resolve every include against the working directory, including nested ones.
+        private void loadIncludedFile(string FileName)
+        {
+            if (FileName.Length == 0) {
+                throw new FormatException("An INCLUDE block requires a filename.");
+            }
+            string FullPath = Path.GetFullPath(FileName);
+            if (loadingFiles.Contains(FullPath)) {
+                throw new FormatException("Include cycle detected for file '" + FullPath + "'.");
+            }
+            // Bound recursion even when filesystem aliases hide a repeated path.
+            if (loadingFiles.Count >= 128) {
+                throw new FormatException("Maximum include nesting depth (128 files) exceeded at '" + FullPath + "'.");
+            }
+            loadingFiles.Add(FullPath);
+            try {
+                using (StreamReader Reader = File.OpenText(FullPath)) {
+                    loadReader(Reader);
+                }
+            } finally {
+                loadingFiles.Remove(FullPath);
+            }
         }
 
         private void loadReader(TextReader Reader)
@@ -102,6 +128,9 @@ namespace ConfigurationFilesReader
                     reading = Type;
                     currentParent = Type == SectionType.None ? "" : Name;
                     switch (reading) {
+                        case SectionType.INCLUDE:
+                            loadIncludedFile(currentParent);
+                            break;
                         case SectionType.Section:
                             dictSections.Add(currentParent, new strDictionary());
                             break;

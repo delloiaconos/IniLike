@@ -1140,8 +1140,89 @@ class ConfigurationFileTests
         }
     }
 
+    static void includeBlocks()
+    {
+        const string Child = "ignored=outside\n[SEC:S]\nk=value\n[TBL:T]\nrow\n[LST:L]\nitem\n[DICT:D]\nk=dict\n[TXT:X]\n  raw.; \n[ENC:E]\nAAE=\n";
+        File.WriteAllText("child file.ini", Child);
+        foreach (string Identifier in new string[] { "INCLUDE", "INC", "INPUT", "LINK", "LOAD" }) {
+            foreach (string FileName in new string[] { "child file.ini", Path.GetFullPath("child file.ini") }) {
+                foreach (string Ending in new string[] { "", "[END]\n", "[END: " + FileName + " ]\n" }) {
+                    string Source = "[BEFORE]\nk=before\n[" + Identifier + ": " + FileName + " ]\n" + Ending + "ignored=value\n[AFTER]\nk=after\n";
+                    ConfigurationFile Config = load(Source);
+                    equal("value", get(Config, "S", "k"));
+                    equal("row", Config.getTable("T")[0]);
+                    equal("item", Config.getList("L")[0]);
+                    equal("dict", Config.getDictionary("D")["k"]);
+                    equal("  raw.; ", Config.getText("X"));
+                    equal("AAE=", Convert.ToBase64String(Config.getEncoded("E")));
+                    equal("before", get(Config, "BEFORE", "k"));
+                    equal("after", get(Config, "AFTER", "k"));
+                    equal("fallback", get(Config, "S", "ignored"));
+                    equal(false, Config.checkSection(FileName));
+                    equal(3, Config.listSections().Count);
+                    equal(Source, File.ReadAllText("config.ini"));
+                    Config.save("flattened.ini");
+                    equal(false, File.ReadAllText("flattened.ini").Contains("child file.ini"));
+                    equal("value", get(new ConfigurationFile("flattened.ini"), "S", "k"));
+                    Config.autoUpdateRegistry = true;
+                    Config.autoSaveRegistry = true;
+                    Config.addParameter("S", "new", "saved");
+                    equal("saved", get(new ConfigurationFile("config.ini"), "S", "new"));
+                    equal(Child, File.ReadAllText("child file.ini"));
+                }
+            }
+        }
+        Directory.CreateDirectory("sub");
+        File.WriteAllText("leaf.ini", "[LEAF]\nk=current-directory\n");
+        File.WriteAllText("sub/leaf.ini", "[WRONG]\nk=wrong\n");
+        File.WriteAllText("sub/nested.ini", "[LOAD:leaf.ini]\n[END:leaf.ini]\n");
+        File.WriteAllText("sub/root.ini", "[INPUT:sub/nested.ini]\n");
+        ConfigurationFile Nested = new ConfigurationFile("sub/root.ini");
+        equal("current-directory", get(Nested, "LEAF", "k"));
+        equal(false, Nested.checkSection("WRONG"));
+        using (ForwardOnlyStream Source = new ForwardOnlyStream(System.Text.Encoding.UTF8.GetBytes("[LINK:sub/root.ini]\n"))) {
+            ConfigurationFile Config = new ConfigurationFile(Source);
+            equal("current-directory", get(Config, "LEAF", "k"));
+            equal(true, Source.CanRead);
+            throws<InvalidOperationException>(delegate { Config.save(); });
+        }
+        File.WriteAllText("empty.ini", "## no blocks\n");
+        equal(0, load("[INC:empty.ini]\n[INC:empty.ini]\n").listSections().Count);
+        equal(0, load("## [INC:missing.ini]\n").listSections().Count);
+        equal("v", get(load("[inc:literal]\nk=v\n"), "inc:literal", "k"));
+        equal("AA==", Convert.ToBase64String(load("[ENC:B]\nAA==\n[INC:empty.ini]\n").getEncoded("B")));
+        equal("raw", load("[TEXT:X]\nraw\n[INC:empty.ini]\n").getText("X"));
+        throws<FormatException>(delegate { load("[INCLUDE: ]\n"); });
+        throws<FileNotFoundException>(delegate { load("[INC:missing.ini]\n"); });
+        throws<FormatException>(delegate { load("[INC:empty.ini]\n[END:other.ini]\n"); });
+        foreach (string Header in new string[] { "S", "TBL:S", "LIST:S", "DICT:S", "TEXT:S", "ENC:S" }) {
+            File.WriteAllText("duplicate.ini", "[" + Header + "]\n");
+            throws<ArgumentException>(delegate { load("[" + Header + "]\n[INC:duplicate.ini]\n"); });
+            throws<ArgumentException>(delegate { load("[INC:duplicate.ini]\n[" + Header + "]\n"); });
+        }
+        throws<ArgumentException>(delegate { load("[INC:child file.ini]\n[LOAD:child file.ini]\n"); });
+        File.WriteAllText("bad.ini", "[LIST:L]\n[END:wrong]\n");
+        using (MemoryStream Source = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("[INC:bad.ini]\n"))) {
+            throws<FormatException>(delegate { new ConfigurationFile(Source); });
+            equal(true, Source.CanRead);
+        }
+        throws<FormatException>(delegate { load("[INC:./config.ini]\n"); });
+        File.WriteAllText("cycle-a.ini", "[INC:cycle-b.ini]\n");
+        File.WriteAllText("cycle-b.ini", "[INC:sub/../cycle-a.ini]\n");
+        throws<FormatException>(delegate { new ConfigurationFile("cycle-a.ini"); });
+        for (int Index = 0; Index <= 128; Index++) {
+            File.WriteAllText("depth" + Index + ".ini", Index == 128 ? "" : "[INC:depth" + (Index + 1) + ".ini]\n");
+        }
+        throws<FormatException>(delegate { new ConfigurationFile("depth0.ini"); });
+        foreach (string FileName in new string[] { "config.ini", "child file.ini", "bad.ini", "cycle-a.ini", "cycle-b.ini", "depth0.ini" }) {
+            using (FileStream File = System.IO.File.Open(FileName, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                equal(true, File.CanWrite);
+        }
+    }
+
     static int Main()
     {
+        test("INCLUDE aliases load files from the current directory with isolated parser state", includeBlocks);
         test("getEncoded flag selects raw bytes or independent Base64 ASCII bytes", encodedFlag);
         test("ENCODED, ENC, BASE64 and B64 decode binary data and preserve it through saving", encodedBlocks);
         test("TEXT and TXT preserve raw Unicode text with normal block transitions", textBlocks);
