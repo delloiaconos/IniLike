@@ -22,9 +22,9 @@ directly. Keep `ConfigurationFilesReader.dll` and `ConfigurationValidator.exe.co
 alongside the executable; the project build copies them there. The executable
 targets .NET Framework 3.5; its runtime configuration permits CLR 4 or CLR 2.
 
-## Listing names
+## Listing block names
 
-To inspect names in a configuration, add one or more listing options before or
+To inspect block names in a configuration, add one or more listing options before or
 after the file path:
 
 ```sh
@@ -33,13 +33,17 @@ mono ConfigurationValidator/bin/Release/ConfigurationValidator.exe examples/benc
 
 | Option | Output |
 | --- | --- |
-| `--sections` | Section names, including plain, `SEC` and `SECTION` headers. |
-| `--dictionaries` | Dictionary names (`DICT` or `DICTIONARY`). |
-| `--tables` | Table names (`TBL` or `TABLE`). |
-| `--lists` | List names (`LST` or `LIST`). |
+| `--sections` | Section block names (key/value blocks with plain, `SEC` or `SECTION` headers). |
+| `--dictionaries` | Dictionary block names (`DICT` or `DICTIONARY`). |
+| `--tables` | Table block names (`TBL` or `TABLE`). |
+| `--lists` | List block names (`LST` or `LIST`). |
 | `--texts` | Text block names (`TEXT` or `TXT`). |
 | `--encoded` | Encoded block names (`ENCODED`, `ENC`, `BASE64` or `B64`). |
 | `--parameters` | Distinct parameter names across all sections, excluding dictionary entries and table/list/text/encoded contents. |
+
+A section is specifically a key/value block; the other block types have their own
+listing options. Include blocks contribute imported data rather than a separate
+list of include names.
 
 Listing options replace the normal success summary with category headings and
 one name per line, sorted ordinally and case-sensitively. Values are not printed;
@@ -73,7 +77,7 @@ replacing an existing destination; specifying the input path as the destination
 rewrites it in place. Without an explicit matching destination, the input is
 unchanged. Loading or writing failures are reported on stderr with exit code 1.
 
-Include directives (`INCLUDE`, `INC`, `INPUT`, `LINK`, `LOAD`) are expanded during
+Include blocks (`INCLUDE`, `INC`, `INPUT`, `LINK`, `LOAD`) are expanded during
 loading. Relative paths resolve from the validator process's working directory,
 including for nested includes. Counts and listings include imported blocks.
 Rewriting produces a self-contained configuration with the combined data; include

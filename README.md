@@ -1,19 +1,31 @@
 # IniLike
 
-IniLike is a standalone C# library for reading INI-like configuration files with text tables. 
+IniLike is a standalone C# library for reading INI-like configuration files organized into typed blocks.
 It targets .NET Framework 3.5. 
 The namespace and assembly name are **ConfigurationFilesReader**, and the public class is `ConfigurationFilesReader.ConfigurationFile`.
 
 The implementation uses one partial class across nine source files in
 `ConfigurationFilesReader/`: `ConfigurationFile.cs` holds shared settings and
-constructors; `ConfigurationFile.Parsing.cs` handles loading;
+constructors; `ConfigurationFile.Parsing.cs` handles block identification and loading;
 `ConfigurationFile.Persistence.cs` handles dump/save and round-trip validation.
 `ConfigurationFile.Sections.cs`, `ConfigurationFile.Tables.cs`,
 `ConfigurationFile.Dictionaries.cs`, `ConfigurationFile.Lists.cs`,
 `ConfigurationFile.Texts.cs` and `ConfigurationFile.Encoded.cs` hold the
 respective storage and access methods, including parameter methods in Sections.
 
+The parser represents block kinds with the private `BlockTypes` enum and maps
+those kinds to their identifiers and aliases in the private readonly
+`blockIdentifiers` dictionary. The include kind is `BlockTypes.Include`, following
+the same capitalization as `Section`, `Table`, `List`, `Dictionary`, `Text` and
+`Encoded`. File identifiers remain uppercase (`INCLUDE`, `INC`, `INPUT`, `LINK`,
+`LOAD`); `BlockTypes.None` represents the state outside a block and is associated
+with the `END` marker.
+
 ## File format
+
+A **block** is the general unit introduced by a bracketed header. A **section** is
+specifically a key/value block (`[NAME]`, `[SEC:NAME]` or `[SECTION:NAME]`). Tables,
+lists, dictionaries, text, encoded data and includes are other block types.
 
 ```ini
 ## Full-line comment
@@ -30,7 +42,7 @@ first; 10; active;
 second; 20; inactive;
 ```
 
-- `[NAME]`, `[SEC:NAME]` and `[SECTION:NAME]` are equivalent section headers
+- `[NAME]`, `[SEC:NAME]` and `[SECTION:NAME]` are equivalent headers for section blocks
   containing `key = value` pairs.
 - `[TABLE:NAME]`, `[TBL:NAME]` and `[TAB:NAME]` are equivalent table headers containing text rows.
   The library returns a `List<string>`;
@@ -73,7 +85,7 @@ second; 20; inactive;
   Included files use the same parser settings and have independent block state;
   their contents cannot continue a block in the including file. All block types
   share their existing namespaces across files, so duplicate block names still throw.
-  Includes are processed immediately and are not stored as sections. Following
+  Include blocks are processed immediately and are not stored in a block registry. Following
   non-header lines are ignored until the next block, and `END` is optional.
   `[END:filename.ini]` must match the trimmed filename as written in the include
   header, using the usual case-sensitive label check. Missing/unreadable files
@@ -81,24 +93,24 @@ second; 20; inactive;
   `FormatException`; nesting is limited to 128 simultaneously open files to
   prevent unbounded recursion through filesystem aliases. Repeated non-recursive
   includes are processed again and are subject to normal duplicate checks.
-- A section, table, list, dictionary, text, encoded or include block may end with `[END]` or `[END:NAME]`. The closing name, when supplied
+- Any block may end with `[END]` or `[END:NAME]`. The closing name, when supplied
   for an active block, must match its name (after trimming); a mismatch throws
-  `FormatException`. Closing markers are not sections or table rows. Subsequent
+  `FormatException`. Closing markers do not create blocks or become block content. Subsequent
   data is ignored until another block header. A closing marker outside
   block also resets the parser to that state. Without a closing marker, the
   next block header or end of file ends the block. Saving uses the canonical
   `[NAME]`, `[TABLE:NAME]`, `[LIST:NAME]` and `[DICT:NAME]` forms without closing markers. Text blocks are saved as `[TEXT:NAME]` followed
   by raw content lines and `[END]`. Encoded blocks use `[ENCODED:NAME]` and a single
   canonical Base64 data line without delimiters or an end marker.
-- Section, key, and table names are **case-sensitive**. The `SEC:`, `SECTION:`,
+- Block names and parameter keys are **case-sensitive**. The `SEC:`, `SECTION:`,
   `TABLE:`, `TBL:`, `LIST:`, `LST:`, `DICT:`, `DICTIONARY:`, `TEXT:`, `TXT:`, `ENCODED:`, `ENC:`, `BASE64:`, `B64:`, `INCLUDE:`, `INC:`, `INPUT:`, `LINK:`, `LOAD:` and `END` keywords
   must be uppercase. Sections, tables, lists, dictionaries, text and encoded blocks have separate name spaces and may
   share a name.
 - Outside text blocks, blank lines and lines starting with any nonempty prefix in `parComment` after
   trimming are ignored. The default prefix is `##`. Matching is ordinal and
-  case-sensitive, takes precedence over section/table headers, and applies only
+  case-sensitive, takes precedence over block headers, and applies only
   to full-line comments. Null or empty prefix entries are ignored.
-- Outside text content, leading and trailing whitespace is trimmed from lines, section names, keys,
+- Outside text content, leading and trailing whitespace is trimmed from lines, block names, keys,
   and values. All trailing `;`, `,`, and `.` characters are then removed from
   values, table rows and list items. Whitespace exposed by removing these delimiters is
   preserved.
@@ -109,7 +121,7 @@ second; 20; inactive;
   data inside a table.
 - Duplicate block names within their respective name spaces, or duplicate keys
   within a section or dictionary, cause an exception. Repeated list items are allowed.
-- Lines before the first section or table are ignored.
+- Lines before the first block header are ignored.
 - Relative configuration file paths are resolved against the working directory.
   Paths stored as values are returned as text without resolution.
 
@@ -287,14 +299,14 @@ Relative paths are resolved against the working directory when their path object
 | `ConfigurationFile(Stream Source)` | Loads from the current stream position, leaves it open, and has no original save destination. |
 | `ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)` | Combines the directory and filename and loads the resulting file immediately. |
 | `ConfigurationFile()` | Creates an empty container without loading a file; automatic creation is disabled. |
-| `checkSection(string)` | Checks for a section, excluding tables. Never creates sections or writes files. |
+| `checkSection(string)` | Checks for a section block, excluding all other block types. Never creates sections or writes files. |
 | `getParameter(section, key, string defaultValue)` | Returns the stored text, or the default if the section or key is missing. With `autoUpdateRegistry=true`, stores that missing default, creating the section if needed; also saves it when `autoSaveRegistry=true`. |
 | `getParameter(..., bool)` | `TRUE` (case-insensitive) and `1` are true; `FALSE` and `0` are false. Surrounding whitespace is ignored. Other stored values remain false, even when the default is true. |
 | `getParameter(..., double/float)` | Parses using invariant culture after replacing commas with periods. Returns the default if parsing fails. |
 | `getParameter(..., long/int)` | Parses an integer using invariant culture. Returns the default if parsing fails. The int overload parses as long and then performs an unchecked cast, so values outside the int range can wrap instead of returning the default. |
 | `getTable(name)` | Returns an independent `List<string>` snapshot of rows in their stored order, compatible with .NET Framework 3.5. Missing tables return a new empty list. Null throws `ArgumentNullException`. Editing the returned list does not modify the configuration or saved data. |
 | `getList(string ListName)` | Returns the mutable internal list of string items. A missing list returns a new, unattached empty list. Null throws `ArgumentNullException`. Never creates a list or triggers saving. |
-| `listLists()` | Returns an independent, ordinally sorted snapshot of list names, excluding sections and tables. |
+| `listLists()` | Returns an independent, ordinally sorted snapshot of list block names, excluding all other block types. |
 | `getDictionary(string DictionaryName)` | Returns the live `Dictionary<string, string>`. Missing names return an unattached empty dictionary; null throws `ArgumentNullException`. Does not create a registered dictionary. |
 | `listDictionaries()` | Returns an independent, ordinally sorted snapshot of dictionary names. |
 | `getText(string TextName)` | Returns raw text lines joined with LF, or an empty string for a missing block. Null throws `ArgumentNullException`. Does not create entries or save. |
@@ -302,10 +314,10 @@ Relative paths are resolved against the working directory when their path object
 | `getEncoded(string BlockName)` | Returns an independent decoded `byte[]`, or an empty array for a missing block. Null throws `ArgumentNullException`. Does not create entries or save. |
 | `getEncoded(string BlockName, bool encoded)` | With `false`, returns decoded bytes as above. With `true`, returns canonical Base64 as ASCII bytes in an independent `byte[]`, without line wrapping or comments. Empty/missing blocks return an empty array; null throws `ArgumentNullException`. Does not create entries or save. |
 | `listEncoded()` | Returns an independent, ordinally sorted snapshot of encoded block names. |
-| `listSections()` | Returns section names, excluding tables. |
+| `listSections()` | Returns section block names, excluding all other block types. |
 | `listParameters(string Section)` | Returns parameter names in the specified section. Missing or empty sections return an empty list; null throws `ArgumentNullException`. |
 | `listParameters()` | Returns distinct parameter names across all sections. The same name in multiple sections appears once; names differing in case remain distinct. |
-| `listTables()` | Returns table names, excluding sections. |
+| `listTables()` | Returns table block names, excluding all other block types. |
 | `dump()` | Returns a flushed UTF-8 `StreamWriter` backed by a memory stream, positioned at zero for reading. The caller must dispose it. |
 | `dump(StreamWriter Writer)` | Writes and flushes the registry at the supplied writer's current position without closing it. Null throws `ArgumentNullException`. |
 | `save()` | Saves to the original file. Throws `InvalidOperationException` if constructed without a file. |
@@ -449,7 +461,7 @@ saving enabled. List and dictionary accessors retain their existing live behavio
 ## Limitations
 
 The listing methods return independent `List<string>` snapshots sorted with `StringComparer.Ordinal`.
-Changing a returned list does not modify the configuration; later in-memory changes are reflected only by a new call. Listing never creates sections or writes files. 
+Changing a returned list does not modify the configuration; later in-memory changes are reflected only by a new call. Listing never creates blocks or writes files.
 Parameter listings contain names, not values.
 
 Delimiter settings are public readonly fields; `autoUpdateRegistry` is a public
