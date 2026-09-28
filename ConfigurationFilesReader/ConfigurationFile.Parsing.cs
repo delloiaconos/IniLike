@@ -93,81 +93,145 @@ namespace ConfigurationFilesReader
             loadingFiles.Add(FullPath);
             try {
                 using (StreamReader Reader = File.OpenText(FullPath)) {
-                    loadReader(Reader);
+                    loadReader(Reader, FullPath);
                 }
+            } catch (Exception Error) {
+                if (Error.Data.Contains("FilePath")) {
+                    throw;
+                }
+                throw withSourceContext(Error, FullPath, 0);
             } finally {
                 loadingFiles.Remove(FullPath);
             }
         }
 
-        private void loadReader(TextReader Reader)
+        private void loadReader(TextReader Reader, string SourcePath)
         {
             string currentParent = "";
             BlockTypes reading = BlockTypes.None;
             StringBuilder Encoded = new StringBuilder();
 
-            string currentLine;
-            while ((currentLine = Reader.ReadLine()) != null) {
-                string RawLine = currentLine;
-                currentLine = currentLine.Trim();
-                if (reading != BlockTypes.Text && (currentLine.Length == 0 || isComment(currentLine))) {
-                    continue;
-                }
+            int LineNumber = 0;
+            int BlockLineNumber = 0;
+            try {
+                string currentLine;
+                while (true) {
+                    LineNumber++;
+                    currentLine = Reader.ReadLine();
+                    if (currentLine == null) {
+                        LineNumber--;
+                        break;
+                    }
+                    string RawLine = currentLine;
+                    currentLine = currentLine.Trim();
+                    if (reading != BlockTypes.Text && (currentLine.Length == 0 || isComment(currentLine))) {
+                        continue;
+                    }
 
-                BlockTypes Type;
-                string Name;
-                if (tryReadBlockHeader(currentLine, out Type, out Name)) {
-                    if (Type == BlockTypes.None && reading != BlockTypes.None && Name != null &&
-                        !String.Equals(Name, currentParent, StringComparison.Ordinal)) {
-                        throw new FormatException("End label does not match the current block: '" + currentParent + "'.");
+                    BlockTypes Type;
+                    string Name;
+                    if (tryReadBlockHeader(currentLine, out Type, out Name)) {
+                        if (Type == BlockTypes.None && reading != BlockTypes.None && Name != null &&
+                            !String.Equals(Name, currentParent, StringComparison.Ordinal)) {
+                            throw new FormatException("End label does not match the current block: '" + currentParent + "'.");
+                        }
+                        if (reading == BlockTypes.Encoded) {
+                            dictEncoded[currentParent] = decodeBase64AtSource(currentParent, Encoded.ToString(), SourcePath, BlockLineNumber);
+                            Encoded.Length = 0;
+                        }
+                        BlockLineNumber = LineNumber;
+                        reading = Type;
+                        currentParent = Type == BlockTypes.None ? "" : Name;
+                        switch (reading) {
+                            case BlockTypes.Include:
+                                loadIncludedFile(currentParent);
+                                break;
+                            case BlockTypes.Section:
+                                dictSections.Add(currentParent, new strDictionary());
+                                break;
+                            case BlockTypes.Table:
+                                dictTables.Add(currentParent, new strTable());
+                                break;
+                            case BlockTypes.List:
+                                dictLists.Add(currentParent, new List<string>());
+                                break;
+                            case BlockTypes.Encoded:
+                                dictEncoded.Add(currentParent, new byte[0]);
+                                break;
+                            case BlockTypes.Text:
+                                dictTexts.Add(currentParent, new List<string>());
+                                break;
+                            case BlockTypes.Dictionary:
+                                dictDictionaries.Add(currentParent, new strDictionary());
+                                break;
+                        }
+                    } else if (reading == BlockTypes.Encoded) {
+                        Encoded.Append(currentLine);
+                    } else if (reading == BlockTypes.Text) {
+                        dictTexts[currentParent].Add(RawLine);
+                    } else if (reading == BlockTypes.Section || reading == BlockTypes.Dictionary) {
+                        string[] sline = currentLine.Split(parSeparator);
+                        if (sline.Length == 2) {
+                            strDictionary Entries = reading == BlockTypes.Section ? dictSections[currentParent] : dictDictionaries[currentParent];
+                            Entries.Add(sline[0].Trim(), sline[1].Trim().TrimEnd(parEndLineDelimiter));
+                        }
+                    } else if (reading == BlockTypes.Table || reading == BlockTypes.List) {
+                        List<string> Rows = reading == BlockTypes.Table ? dictTables[currentParent] : dictLists[currentParent];
+                        Rows.Add(currentLine.TrimEnd(parEndLineDelimiter));
                     }
-                    if (reading == BlockTypes.Encoded) {
-                        dictEncoded[currentParent] = decodeBase64(currentParent, Encoded.ToString());
-                        Encoded.Length = 0;
-                    }
-                    reading = Type;
-                    currentParent = Type == BlockTypes.None ? "" : Name;
-                    switch (reading) {
-                        case BlockTypes.Include:
-                            loadIncludedFile(currentParent);
-                            break;
-                        case BlockTypes.Section:
-                            dictSections.Add(currentParent, new strDictionary());
-                            break;
-                        case BlockTypes.Table:
-                            dictTables.Add(currentParent, new strTable());
-                            break;
-                        case BlockTypes.List:
-                            dictLists.Add(currentParent, new List<string>());
-                            break;
-                        case BlockTypes.Encoded:
-                            dictEncoded.Add(currentParent, new byte[0]);
-                            break;
-                        case BlockTypes.Text:
-                            dictTexts.Add(currentParent, new List<string>());
-                            break;
-                        case BlockTypes.Dictionary:
-                            dictDictionaries.Add(currentParent, new strDictionary());
-                            break;
-                    }
-                } else if (reading == BlockTypes.Encoded) {
-                    Encoded.Append(currentLine);
-                } else if (reading == BlockTypes.Text) {
-                    dictTexts[currentParent].Add(RawLine);
-                } else if (reading == BlockTypes.Section || reading == BlockTypes.Dictionary) {
-                    string[] sline = currentLine.Split(parSeparator);
-                    if (sline.Length == 2) {
-                        strDictionary Entries = reading == BlockTypes.Section ? dictSections[currentParent] : dictDictionaries[currentParent];
-                        Entries.Add(sline[0].Trim(), sline[1].Trim().TrimEnd(parEndLineDelimiter));
-                    }
-                } else if (reading == BlockTypes.Table || reading == BlockTypes.List) {
-                    List<string> Rows = reading == BlockTypes.Table ? dictTables[currentParent] : dictLists[currentParent];
-                    Rows.Add(currentLine.TrimEnd(parEndLineDelimiter));
                 }
+                if (reading == BlockTypes.Encoded) {
+                    dictEncoded[currentParent] = decodeBase64AtSource(currentParent, Encoded.ToString(), SourcePath, BlockLineNumber);
+                }
+            } catch (Exception Error) {
+                // Already annotated within this source (for example deferred Base64 decoding).
+                if (String.Equals(Error.Data["ContextSource"] as string, SourcePath ?? "<stream>", StringComparison.Ordinal)) {
+                    throw;
+                }
+                throw withSourceContext(Error, SourcePath, LineNumber);
             }
-            if (reading == BlockTypes.Encoded) {
-                dictEncoded[currentParent] = decodeBase64(currentParent, Encoded.ToString());
+        }
+
+        private static byte[] decodeBase64AtSource(string BlockName, string Encoded, string SourcePath, int LineNumber)
+        {
+            try {
+                return decodeBase64(BlockName, Encoded);
+            } catch (FormatException Error) {
+                throw withSourceContext(Error, SourcePath, LineNumber);
             }
+        }
+
+        // Keep the original exception as the cause and preserve common exception types.
+        private static Exception withSourceContext(Exception Error, string SourcePath, int LineNumber)
+        {
+            string Source = SourcePath ?? "<stream>";
+            string Location = LineNumber > 0 ? "line " + LineNumber : "before reading";
+            string Message = "Source '" + Source + "', " + Location + ": " + Error.Message;
+            Exception Result;
+            if (Error is FormatException) {
+                Result = new FormatException(Message, Error);
+            } else if (Error is ArgumentNullException) {
+                Result = new ArgumentNullException(Message, Error);
+            } else if (Error is ArgumentException) {
+                Result = new ArgumentException(Message, ((ArgumentException)Error).ParamName, Error);
+            } else if (Error is FileNotFoundException) {
+                Result = new FileNotFoundException(Message, ((FileNotFoundException)Error).FileName, Error);
+            } else if (Error is DirectoryNotFoundException) {
+                Result = new DirectoryNotFoundException(Message, Error);
+            } else if (Error is UnauthorizedAccessException) {
+                Result = new UnauthorizedAccessException(Message, Error);
+            } else if (Error is IOException) {
+                Result = new IOException(Message, Error);
+            } else {
+                Result = new Exception(Message, Error);
+            }
+            // Retain the innermost source as structured data; messages describe the include chain.
+            Result.Data["FilePath"] = Error.Data.Contains("FilePath") ? Error.Data["FilePath"] : Source;
+            Result.Data["FileName"] = Error.Data.Contains("FileName") ? Error.Data["FileName"] :
+                (SourcePath == null ? "<stream>" : Path.GetFileName(SourcePath));
+            Result.Data["LineNumber"] = Error.Data.Contains("LineNumber") ? Error.Data["LineNumber"] : LineNumber;
+            Result.Data["ContextSource"] = Source;
+            return Result;
         }
 
         // .NET 3.5 StreamReader has no leaveOpen option. Dispose the reader while

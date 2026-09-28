@@ -31,10 +31,10 @@ namespace ConfigurationFilesReader
             this.FilePath = FilePath;
             if (!this.FilePath.Exists)
             {
-                throw new System.Exception("File '" + FilePath.FullName + "' not found.");
+                throw withSourceContext(new System.Exception("File '" + FilePath.FullName + "' not found."), FilePath.FullName, 0);
             } else if (!loadFile())
             {
-                throw new System.Exception("Unable to load file '" + FilePath.FullName + "'.");
+                throw withSourceContext(new System.Exception("Unable to load file '" + FilePath.FullName + "'."), FilePath.FullName, 0);
             }
         }
 
@@ -49,7 +49,8 @@ namespace ConfigurationFilesReader
                 throw new ArgumentException("The stream must be readable.", "Source");
             }
             using (StreamReader Reader = new StreamReader(new BorrowedReadStream(Source))) {
-                loadReader(Reader);
+                FileStream FileSource = Source as FileStream;
+                loadReader(Reader, FileSource == null ? null : Path.GetFullPath(FileSource.Name));
             }
         }
 

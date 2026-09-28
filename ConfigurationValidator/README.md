@@ -93,6 +93,12 @@ the exception type and original library message (including inner exceptions) to
 stderr, without a stack trace. The first loading error stops validation; the tool
 does not save or modify the input file unless explicitly requested with `--rewrite`.
 
+Loading diagnostics include the full source path, filename and one-based line
+number, counting comments and blank lines. Errors in included files show their
+source location and the include-header locations in the parent files. File-open
+errors say `before reading`; Base64 errors point to the encoded block's header.
+The validator prints the contextual message and its original inner exception.
+
 | Exit code | Meaning |
 | --- | --- |
 | `0` | File loaded/listed/rewritten successfully, or help displayed. |

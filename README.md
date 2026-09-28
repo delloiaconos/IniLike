@@ -218,6 +218,33 @@ The original save destination remains the top-level file; configurations loaded
 from a stream still need an explicit destination. As with other save overloads,
 explicitly choosing an included file as a destination replaces that file.
 
+### Loading diagnostics
+
+Parser errors include the absolute source path (including filename) and a one-based
+line number in the exception message. Blank lines and comments count as lines.
+For example, a duplicate key can report `Source '/configs/settings.ini', line 5:`
+followed by the original error message. Nested include failures retain the failing
+file's location and add the locations of the include headers that led to it.
+File-open errors report `before reading` instead of assigning a fictitious row.
+
+The exception's `Data` dictionary also exposes the innermost error location:
+
+| Key | Value |
+| --- | --- |
+| `FilePath` | Absolute source path, or `<stream>` for a stream without a filename. |
+| `FileName` | Filename without directories, or `<stream>`. |
+| `LineNumber` | One-based line number; `0` if the file could not be opened. |
+
+A `FileStream` supplies its filename for diagnostics without becoming the original
+save destination. Stream line numbers are counted from the starting read position.
+Read failures identify the line being attempted. Base64 decoding failures identify
+the encoded block's opening header, since the payload is decoded as a whole.
+Common exception types (`FormatException`, `ArgumentException`, file-not-found,
+directory-not-found, access-denied and I/O exceptions) are preserved, and the
+original exception is retained as `InnerException`. These diagnostics apply to
+loading, including the parser invoked by save's round-trip validation; API argument
+checks without a source file do not have a file location.
+
 ## API reference
 
 The diagram shows the public API of the single partial `ConfigurationFile` class.

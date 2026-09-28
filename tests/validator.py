@@ -159,6 +159,12 @@ def main():
         assert (root / "dictionary.ini").read_bytes() == included_original
         assert (root / "include.ini").read_bytes() == include_original
         check(["include-copy.ini", "--rewrite"], 0, included_dump, exact=True)
+        check(["duplicate.ini"], 1, "Source '" + str(root / "duplicate.ini") + "', line 3", True)
+        (root / "context-child.ini").write_text("## comment\n[S]\nk=1\nk=2\n", encoding="utf-8")
+        (root / "context-parent.ini").write_text("\n[INC:context-child.ini]\n", encoding="utf-8")
+        check(["context-parent.ini"], 1, "Source '" + str(root / "context-child.ini") + "', line 4", True)
+        check(["context-parent.ini"], 1, "Source '" + str(root / "context-parent.ini") + "', line 2", True)
+        check(["invalid-base64.ini"], 1, "Source '" + str(root / "invalid-base64.ini") + "', line 1", True)
         unicode_file = root / "unicode.ini"
         unicode_file.write_text("## comment\n[SEC:É]\nname=caffè\n[END]\n", encoding="utf-8")
         check([unicode_file.name, "--rewrite"], 0, "[É]\nname=caffè;\n", exact=True)

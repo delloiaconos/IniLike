@@ -1233,8 +1233,80 @@ class ConfigurationFileTests
         }
     }
 
+    static Exception captureError(Action Action)
+    {
+        try { Action(); }
+        catch (Exception Error) { return Error; }
+        throw new Exception("Expected an exception.");
+    }
+
+    static void sourceContext(Exception Error, string Source, int Line)
+    {
+        equal(Source, (string)Error.Data["FilePath"]);
+        equal(Source == "<stream>" ? Source : Path.GetFileName(Source), (string)Error.Data["FileName"]);
+        equal(Line, (int)Error.Data["LineNumber"]);
+        equal(true, Error.Message.Contains(Source));
+        equal(true, Error.Message.Contains(Line > 0 ? "line " + Line : "before reading"));
+        equal(true, Error.InnerException != null);
+    }
+
+    static void diagnosticContext()
+    {
+        string ConfigPath = Path.GetFullPath("config.ini");
+        foreach (string NewLine in new string[] { "\n", "\r\n", "\r" }) {
+            Exception Error = captureError(delegate { load("## comment" + NewLine + NewLine + "[S]" + NewLine + "k=1" + NewLine + "k=2"); });
+            equal(typeof(ArgumentException), Error.GetType());
+            sourceContext(Error, ConfigPath, 5);
+        }
+        foreach (string Header in new string[] { "S", "TABLE:S", "LIST:S", "DICT:S", "TEXT:S", "ENCODED:S" }) {
+            Exception Error = captureError(delegate { load("[" + Header + "]\n\n[" + Header + "]\n"); });
+            equal(typeof(ArgumentException), Error.GetType());
+            sourceContext(Error, ConfigPath, 3);
+        }
+        Exception Mismatch = captureError(delegate { load("[S]\n## comment\n[END:wrong]\n"); });
+        equal(typeof(FormatException), Mismatch.GetType());
+        sourceContext(Mismatch, ConfigPath, 3);
+        foreach (string Ending in new string[] { "", "\n[END]", "\n[NEXT]" }) {
+            Exception Error = captureError(delegate { load("## header\n[ENC:BAD]\n!" + Ending); });
+            equal(typeof(FormatException), Error.GetType());
+            sourceContext(Error, ConfigPath, 2);
+        }
+        Directory.CreateDirectory("included files");
+        File.WriteAllText("included files/bad.ini", "## comment\n[S]\nk=1\nk=2\n");
+        File.WriteAllText("middle.ini", "\n[LOAD:included files/bad.ini]\n");
+        Exception Nested = captureError(delegate { load("## root\n\n[INC:middle.ini]\n"); });
+        equal(typeof(ArgumentException), Nested.GetType());
+        sourceContext(Nested, Path.GetFullPath("included files/bad.ini"), 4);
+        equal(true, Nested.Message.Contains("Source '" + ConfigPath + "', line 3"));
+        equal(true, Nested.Message.Contains("Source '" + Path.GetFullPath("middle.ini") + "', line 2"));
+        Exception Missing = captureError(delegate { load("\n[INC:missing.ini]\n"); });
+        equal(typeof(FileNotFoundException), Missing.GetType());
+        sourceContext(Missing, Path.GetFullPath("missing.ini"), 0);
+        equal(true, Missing.Message.Contains("Source '" + ConfigPath + "', line 2"));
+        sourceContext(captureError(delegate { new ConfigurationFile("missing.ini"); }), Path.GetFullPath("missing.ini"), 0);
+        sourceContext(captureError(delegate { load("\n[INC: ]\n"); }), ConfigPath, 2);
+        sourceContext(captureError(delegate { load("\n[INC:config.ini]\n"); }), ConfigPath, 2);
+        using (MemoryStream Source = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("[S]\nk=1\nk=2\n"))) {
+            sourceContext(captureError(delegate { new ConfigurationFile(Source); }), "<stream>", 3);
+            equal(true, Source.CanRead);
+        }
+        File.WriteAllText("stream.ini", "[S]\n[END:wrong]\n");
+        using (FileStream Source = File.OpenRead("stream.ini")) {
+            sourceContext(captureError(delegate { new ConfigurationFile(Source); }), Path.GetFullPath("stream.ini"), 2);
+            equal(true, Source.CanRead);
+        }
+        using (ForwardOnlyStream Source = new ForwardOnlyStream(new byte[0])) {
+            Source.FailReads = true;
+            Exception Error = captureError(delegate { new ConfigurationFile(Source); });
+            equal(typeof(IOException), Error.GetType());
+            sourceContext(Error, "<stream>", 1);
+            equal(true, Source.CanRead);
+        }
+    }
+
     static int Main()
     {
+        test("load errors include source paths, filenames, line numbers and include chains", diagnosticContext);
         test("INCLUDE aliases load files from the current directory with isolated parser state", includeBlocks);
         test("getEncoded flag selects raw bytes or independent Base64 ASCII bytes", encodedFlag);
         test("ENCODED, ENC, BASE64 and B64 decode binary data and preserve it through saving", encodedBlocks);
