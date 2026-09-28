@@ -10,35 +10,35 @@ namespace ConfigurationFilesReader
 
     public partial class ConfigurationFile
     {
-        private enum SectionType { None = 0, Section, Table, List, Dictionary, Text, Encoded, INCLUDE };
+        private enum BlockTypes { None = 0, Section, Table, List, Dictionary, Text, Encoded, Include };
 
-        private readonly Dictionary<SectionType, List<string>> sectionIdentifier = new Dictionary<SectionType, List<string>> {
-            { SectionType.INCLUDE, new List<string> { "INCLUDE", "INC", "INPUT", "LINK", "LOAD" } },
-            { SectionType.None, new List<string> { "END" } },
-            { SectionType.Section, new List<string> { "SECTION", "SEC" } },
-            { SectionType.Table, new List<string> { "TABLE", "TBL", "TAB" } },
-            { SectionType.List, new List<string> { "LIST", "LST" } },
-            { SectionType.Dictionary, new List<string> { "DICT", "DICTIONARY" } },
-            { SectionType.Text, new List<string> { "TEXT", "TXT" } },
-            { SectionType.Encoded, new List<string> { "ENCODED", "ENC", "BASE64", "B64" } }
+        private readonly Dictionary<BlockTypes, List<string>> blockIdentifiers = new Dictionary<BlockTypes, List<string>> {
+            { BlockTypes.Include, new List<string> { "INCLUDE", "INC", "INPUT", "LINK", "LOAD" } },
+            { BlockTypes.None, new List<string> { "END" } },
+            { BlockTypes.Section, new List<string> { "SECTION", "SEC" } },
+            { BlockTypes.Table, new List<string> { "TABLE", "TBL", "TAB" } },
+            { BlockTypes.List, new List<string> { "LIST", "LST" } },
+            { BlockTypes.Dictionary, new List<string> { "DICT", "DICTIONARY" } },
+            { BlockTypes.Text, new List<string> { "TEXT", "TXT" } },
+            { BlockTypes.Encoded, new List<string> { "ENCODED", "ENC", "BASE64", "B64" } }
         };
 
         private readonly HashSet<string> loadingFiles = new HashSet<string>(
             Path.DirectorySeparatorChar == '\\' ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
         // Unrecognized identifiers remain plain section names. A null name marks an unnamed end.
-        private bool tryReadBlockHeader(string Line, out SectionType Type, out string Name)
+        private bool tryReadBlockHeader(string Line, out BlockTypes Type, out string Name)
         {
-            Type = SectionType.Section;
+            Type = BlockTypes.Section;
             Name = null;
             if (!Line.StartsWith("[", StringComparison.Ordinal) || !Line.EndsWith("]", StringComparison.Ordinal)) {
                 return false;
             }
 
             string Header = Line.Substring(1, Line.Length - 2);
-            foreach (KeyValuePair<SectionType, List<string>> Entry in sectionIdentifier) {
+            foreach (KeyValuePair<BlockTypes, List<string>> Entry in blockIdentifiers) {
                 foreach (string Identifier in Entry.Value) {
-                    if (Entry.Key == SectionType.None && String.Equals(Header, Identifier, StringComparison.Ordinal)) {
+                    if (Entry.Key == BlockTypes.None && String.Equals(Header, Identifier, StringComparison.Ordinal)) {
                         Type = Entry.Key;
                         return true;
                     }
@@ -103,69 +103,69 @@ namespace ConfigurationFilesReader
         private void loadReader(TextReader Reader)
         {
             string currentParent = "";
-            SectionType reading = SectionType.None;
+            BlockTypes reading = BlockTypes.None;
             StringBuilder Encoded = new StringBuilder();
 
             string currentLine;
             while ((currentLine = Reader.ReadLine()) != null) {
                 string RawLine = currentLine;
                 currentLine = currentLine.Trim();
-                if (reading != SectionType.Text && (currentLine.Length == 0 || isComment(currentLine))) {
+                if (reading != BlockTypes.Text && (currentLine.Length == 0 || isComment(currentLine))) {
                     continue;
                 }
 
-                SectionType Type;
+                BlockTypes Type;
                 string Name;
                 if (tryReadBlockHeader(currentLine, out Type, out Name)) {
-                    if (Type == SectionType.None && reading != SectionType.None && Name != null &&
+                    if (Type == BlockTypes.None && reading != BlockTypes.None && Name != null &&
                         !String.Equals(Name, currentParent, StringComparison.Ordinal)) {
                         throw new FormatException("End label does not match the current block: '" + currentParent + "'.");
                     }
-                    if (reading == SectionType.Encoded) {
+                    if (reading == BlockTypes.Encoded) {
                         dictEncoded[currentParent] = decodeBase64(currentParent, Encoded.ToString());
                         Encoded.Length = 0;
                     }
                     reading = Type;
-                    currentParent = Type == SectionType.None ? "" : Name;
+                    currentParent = Type == BlockTypes.None ? "" : Name;
                     switch (reading) {
-                        case SectionType.INCLUDE:
+                        case BlockTypes.Include:
                             loadIncludedFile(currentParent);
                             break;
-                        case SectionType.Section:
+                        case BlockTypes.Section:
                             dictSections.Add(currentParent, new strDictionary());
                             break;
-                        case SectionType.Table:
+                        case BlockTypes.Table:
                             dictTables.Add(currentParent, new strTable());
                             break;
-                        case SectionType.List:
+                        case BlockTypes.List:
                             dictLists.Add(currentParent, new List<string>());
                             break;
-                        case SectionType.Encoded:
+                        case BlockTypes.Encoded:
                             dictEncoded.Add(currentParent, new byte[0]);
                             break;
-                        case SectionType.Text:
+                        case BlockTypes.Text:
                             dictTexts.Add(currentParent, new List<string>());
                             break;
-                        case SectionType.Dictionary:
+                        case BlockTypes.Dictionary:
                             dictDictionaries.Add(currentParent, new strDictionary());
                             break;
                     }
-                } else if (reading == SectionType.Encoded) {
+                } else if (reading == BlockTypes.Encoded) {
                     Encoded.Append(currentLine);
-                } else if (reading == SectionType.Text) {
+                } else if (reading == BlockTypes.Text) {
                     dictTexts[currentParent].Add(RawLine);
-                } else if (reading == SectionType.Section || reading == SectionType.Dictionary) {
+                } else if (reading == BlockTypes.Section || reading == BlockTypes.Dictionary) {
                     string[] sline = currentLine.Split(parSeparator);
                     if (sline.Length == 2) {
-                        strDictionary Entries = reading == SectionType.Section ? dictSections[currentParent] : dictDictionaries[currentParent];
+                        strDictionary Entries = reading == BlockTypes.Section ? dictSections[currentParent] : dictDictionaries[currentParent];
                         Entries.Add(sline[0].Trim(), sline[1].Trim().TrimEnd(parEndLineDelimiter));
                     }
-                } else if (reading == SectionType.Table || reading == SectionType.List) {
-                    List<string> Rows = reading == SectionType.Table ? dictTables[currentParent] : dictLists[currentParent];
+                } else if (reading == BlockTypes.Table || reading == BlockTypes.List) {
+                    List<string> Rows = reading == BlockTypes.Table ? dictTables[currentParent] : dictLists[currentParent];
                     Rows.Add(currentLine.TrimEnd(parEndLineDelimiter));
                 }
             }
-            if (reading == SectionType.Encoded) {
+            if (reading == BlockTypes.Encoded) {
                 dictEncoded[currentParent] = decodeBase64(currentParent, Encoded.ToString());
             }
         }
