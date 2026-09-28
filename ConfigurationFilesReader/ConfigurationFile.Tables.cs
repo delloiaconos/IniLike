@@ -17,14 +17,11 @@ namespace ConfigurationFilesReader
             return Names;
         }
 
-        // Get a table by name.
+        // Return an independent snapshot of the rows, or an empty list when missing.
         public strTable getTable(string tablename)
         {
-            if (dictTables.ContainsKey(tablename)) {
-                return dictTables[tablename];
-            } else {
-                return new strTable(0);
-            }
+            strTable Rows;
+            return dictTables.TryGetValue(tablename, out Rows) ? new strTable(Rows) : new strTable();
         }
     }
 }

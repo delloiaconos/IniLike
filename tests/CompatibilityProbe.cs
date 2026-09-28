@@ -40,7 +40,15 @@ class CompatibilityProbe
         require(!(bool)call(cfg,"getParameter",new[]{typeof(string),typeof(string),typeof(bool)},"DATA","boolean",true),"non TRUE boolean");
         require((int)call(cfg,"getParameter",new[]{typeof(string),typeof(string),typeof(int)},"DATA","invalid",42)==42,"invalid number default");
         List<string> rows=table(cfg,"ROWS");require(rows.Count==2&&rows[0]=="a;b;c"&&rows[1]=="d;e", "table rows");
-        rows.Add("mutable");require(table(cfg,"ROWS").Count==3,"returned table is live");
+        rows.Add("mutable");
+        int storedCount=table(cfg,"ROWS").Count;
+        if(requireMemoryAdd)
+            require(storedCount==2,"IniLike table rows must be a snapshot");
+        else
+        {
+            require(storedCount==2||storedCount==3,"unexpected consumer table behavior");
+            if(storedCount==3) Console.WriteLine("NOTE: OperatorUI tables remain live; IniLike returns row snapshots.");
+        }
         table(cfg,"missing").Add("ignored");require(table(cfg,"missing").Count==0,"missing table detached");
         call(cfg,"addParameter",new[]{typeof(string),typeof(string),typeof(string)},"DATA","added","new");
         string added=get(cfg,"DATA","added");

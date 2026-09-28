@@ -292,7 +292,7 @@ Relative paths are resolved against the working directory when their path object
 | `getParameter(..., bool)` | `TRUE` (case-insensitive) and `1` are true; `FALSE` and `0` are false. Surrounding whitespace is ignored. Other stored values remain false, even when the default is true. |
 | `getParameter(..., double/float)` | Parses using invariant culture after replacing commas with periods. Returns the default if parsing fails. |
 | `getParameter(..., long/int)` | Parses an integer using invariant culture. Returns the default if parsing fails. The int overload parses as long and then performs an unchecked cast, so values outside the int range can wrap instead of returning the default. |
-| `getTable(name)` | Returns the mutable internal list. For a missing table, returns a new empty list that is not attached to the container. |
+| `getTable(name)` | Returns an independent `List<string>` snapshot of rows in their stored order, compatible with .NET Framework 3.5. Missing tables return a new empty list. Null throws `ArgumentNullException`. Editing the returned list does not modify the configuration or saved data. |
 | `getList(string ListName)` | Returns the mutable internal list of string items. A missing list returns a new, unattached empty list. Null throws `ArgumentNullException`. Never creates a list or triggers saving. |
 | `listLists()` | Returns an independent, ordinally sorted snapshot of list names, excluding sections and tables. |
 | `getDictionary(string DictionaryName)` | Returns the live `Dictionary<string, string>`. Missing names return an unattached empty dictionary; null throws `ArgumentNullException`. Does not create a registered dictionary. |
@@ -438,6 +438,13 @@ created with `File.Move`. Failed serialization or validation leaves the destinat
 untouched and temporary files are cleaned up. Filesystem errors propagate;
 replacement requires filesystem support and does not fall back to truncating
 the destination. Concurrent changes to a configuration are not supported.
+
+`getTable(name)` returns a fresh row snapshot on every call. Adding, replacing,
+removing or clearing its rows affects only that returned list. This changes the
+previous behavior that exposed the stored mutable table. The return type remains
+`List<string>` and uses APIs available in .NET Framework 3.5. Getting or editing a
+snapshot never creates a table or triggers saving, even with automatic updates or
+saving enabled. List and dictionary accessors retain their existing live behavior.
 
 ## Limitations
 

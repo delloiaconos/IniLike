@@ -274,13 +274,26 @@ class ConfigurationFileTests
         equal(true, cfg.checkSection("table:lower"));
         equal(0, cfg.getTable("lower").Count);
         equal(0, cfg.getTable("rows").Count);
-        rows.Add("live");
-        equal(true, Object.ReferenceEquals(rows, cfg.getTable("ROWS")));
-        equal("live", cfg.getTable("ROWS")[5]);
-        rows.RemoveAt(0);
-        equal("d;e", cfg.getTable("ROWS")[0]);
-        cfg.getTable("EMPTY").Add("also live");
-        equal(1, cfg.getTable("EMPTY").Count);
+        string Original = File.ReadAllText("config.ini");
+        List<string> Other = cfg.getTable("ROWS");
+        equal(false, Object.ReferenceEquals(rows, Other));
+        cfg.autoUpdateRegistry = true;
+        cfg.autoSaveRegistry = true;
+        rows.Add("detached");
+        rows[0] = "replacement";
+        rows.RemoveAt(1);
+        equal(5, cfg.getTable("ROWS").Count);
+        equal("a;b;c", cfg.getTable("ROWS")[0]);
+        equal("d;e", cfg.getTable("ROWS")[1]);
+        equal("a;b;c", Other[0]);
+        rows.Clear();
+        equal(5, Other.Count);
+        equal(5, cfg.getTable("ROWS").Count);
+        equal(Original, File.ReadAllText("config.ini"));
+        cfg.getTable("EMPTY").Add("detached");
+        equal(0, cfg.getTable("EMPTY").Count);
+        equal(false, Object.ReferenceEquals(cfg.getTable("EMPTY"), cfg.getTable("EMPTY")));
+        throws<ArgumentNullException>(delegate { cfg.getTable(null); });
         cfg.getTable("missing").Add("detached");
         equal(0, cfg.getTable("missing").Count);
     }
@@ -501,7 +514,7 @@ class ConfigurationFileTests
         equal(12, Reloaded.getParameter("NEW", "number", 0));
         equal(true, Reloaded.checkSection("EMPTY"));
         equal(0, Reloaded.getTable("EMPTY").Count);
-        equal("a;b||x=y", String.Join("|", Reloaded.getTable("S").ToArray()));
+        equal("a;b|", String.Join("|", Reloaded.getTable("S").ToArray()));
         string OriginalDirectory = Environment.CurrentDirectory;
         try {
             Environment.CurrentDirectory = Path.Combine(OriginalDirectory, "output files");
@@ -547,8 +560,8 @@ class ConfigurationFileTests
         equal(false, File.Exists("new.ini"));
         ConfigurationFile Table = loadForUpdates("[TABLE:T]\nrow\n");
         Table.getTable("T").Add("## ignored");
-        throws<InvalidOperationException>(delegate { Table.save("destination.ini"); });
-        equal(Original, File.ReadAllText("destination.ini"));
+        Table.save("table-copy.ini");
+        equal("row", String.Join("|", new ConfigurationFile("table-copy.ini").getTable("T").ToArray()));
         Config = new ConfigurationFile { autoUpdateRegistry = true };
         throws<DirectoryNotFoundException>(delegate { Config.save(Path.Combine("missing", "file.ini")); });
         Directory.CreateDirectory("directory.ini");
@@ -1244,7 +1257,7 @@ class ConfigurationFileTests
         test("file handles released after loading and parsing errors", fileHandles);
         test("empty container and all default overloads", defaults);
         test("sections, whitespace, delimiters, Unicode and literal values", parsing);
-        test("tables, transitions, case sensitivity and mutable lists", tables);
+        test("tables, transitions, case sensitivity and independent row snapshots", tables);
         test("numeric conversions, boundaries and three cultures", numbers);
         test("boolean conversions", booleans);
         test("runtime overrides and file immutability", overrides);
