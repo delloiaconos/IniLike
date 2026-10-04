@@ -55,7 +55,7 @@ second; 20; inactive;
 - `[DICT:NAME]` and `[DICTIONARY:NAME]` are equivalent dictionary headers.
   Entries are string keys and string values: `x = 3` stores `"3"`, and
   `y = 3.14` stores `"3.14"`. They use the same key/value parsing, trimming and
-  comment rules as sections, including ignoring lines without exactly one `=`.
+  comment rules as sections, splitting entries at the first `=` and ignoring lines without `=`.
   Duplicate keys throw; keys differing in case remain distinct.
 - `[TEXT:NAME]` and `[TXT:NAME]` are equivalent plain-text block headers.
   Content supports Unicode and preserves whitespace, blank lines, `##` comment-looking
@@ -114,8 +114,9 @@ second; 20; inactive;
   and values. All trailing `;`, `,`, and `.` characters are then removed from
   values, table rows and list items. Whitespace exposed by removing these delimiters is
   preserved.
-- A key/value line must split into **exactly two parts** at `=`. Lines such as
-  `expression = a=b;` are ignored.
+- Section and dictionary entries split at the **first** `=` only. Additional
+  `=` characters belong to the value: `expression = a=b;` stores `a=b`.
+  Lines without `=` are ignored; empty keys and values remain supported.
 - Quoting, escaping, multiline values, and inline comments are not supported.
   Quotes remain part of the value. A line such as `; comment` is treated as
   data inside a table.

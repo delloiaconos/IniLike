@@ -232,6 +232,34 @@ class ConfigurationFileTests
         equal(0, Directory.GetFiles(".").Length);
     }
 
+    static void firstSeparator()
+    {
+        const string Entries = " expression = a=b=c;\npadding=Zg==;\nleading==value;\nempty=;\n=unnamed=value;\ninvalid\n";
+        foreach (string Header in new string[] { "S", "SEC:S", "SECTION:S", "DICT:S", "DICTIONARY:S" }) {
+            bool Dictionary = Header.StartsWith("DICT", StringComparison.Ordinal);
+            ConfigurationFile Config = load("[" + Header + "]\n" + Entries + "[END:S]\n");
+            foreach (bool Reload in new bool[] { false, true }) {
+                if (Reload) {
+                    Config.save("copy.ini");
+                    Config = new ConfigurationFile("copy.ini");
+                }
+                string[] Keys = { "expression", "padding", "leading", "empty", "" };
+                string[] Values = { "a=b=c", "Zg==", "=value", "", "unnamed=value" };
+                equal(5, Dictionary ? Config.getDictionary("S").Count : Config.listParameters("S").Count);
+                for (int Index = 0; Index < Keys.Length; Index++) {
+                    equal(Values[Index], Dictionary ? Config.getDictionary("S")[Keys[Index]] : get(Config, "S", Keys[Index]));
+                }
+            }
+            throws<ArgumentException>(delegate { load("[" + Header + "]\nk=a=b\nk=c=d\n"); });
+        }
+        ConfigurationFile Auto = loadForUpdates("[S]\nk=value\n");
+        Auto.autoSaveRegistry = true;
+        Auto.addParameter("NEW", "key", "a=b==");
+        equal("a=b==", get(new ConfigurationFile("config.ini"), "NEW", "key"));
+        Auto.setParameter("S", "new", "=value");
+        equal("=value", get(new ConfigurationFile("config.ini"), "S", "new"));
+    }
+
     static void parsing()
     {
         ConfigurationFile cfg = load("ignored=before\r\n  ## comment\r\n\r\n [ S ] \r\n" +
@@ -245,7 +273,7 @@ class ConfigurationFileTests
         equal("", get(cfg, "S", "empty"));
         equal("unnamed", get(cfg, "S", ""));
         equal("fallback", get(cfg, "S", "invalid"));
-        equal("fallback", get(cfg, "S", "multi"));
+        equal("a=b", get(cfg, "S", "multi"));
         equal("fallback", get(cfg, "S", "ignored"));
         equal("value", get(cfg, "S", "punctuation"));
         equal("", get(cfg, "S", "dot"));
@@ -548,7 +576,7 @@ class ConfigurationFileTests
         throws<ArgumentNullException>(delegate { Config.save(new FileInfo("."), null); });
         const string Original = "keep this file unchanged";
         File.WriteAllText("destination.ini", Original);
-        foreach (string Value in new string[] { null, "a=b", "line\nbreak", " leading", "trailing.", "trailing;" }) {
+        foreach (string Value in new string[] { null, "line\nbreak", " leading", "trailing.", "trailing;" }) {
             Config.setParameter("S", "k", Value);
             throws<InvalidOperationException>(delegate { Config.save("destination.ini"); });
             equal(Original, File.ReadAllText("destination.ini"));
@@ -747,9 +775,9 @@ class ConfigurationFileTests
         const string Source = "[S]\nk=value\n";
         ConfigurationFile Config = loadForUpdates(Source);
         Config.autoSaveRegistry = true;
-        throws<InvalidOperationException>(delegate { Config.addParameter("NEW", "key", "a=b"); });
+        throws<InvalidOperationException>(delegate { Config.addParameter("NEW", "key", "line\nbreak"); });
         equal(false, Config.checkSection("NEW"));
-        throws<InvalidOperationException>(delegate { Config.setParameter("S", "bad", "a=b"); });
+        throws<InvalidOperationException>(delegate { Config.setParameter("S", "bad", "line\nbreak"); });
         equal(false, Config.listParameters("S").Contains("bad"));
         equal(Source, File.ReadAllText("config.ini"));
         File.Delete("config.ini");
@@ -940,7 +968,7 @@ class ConfigurationFileTests
         equal("case", Live["K"]);
         equal("", Live["empty"]);
         equal("unnamed", Live[""]);
-        equal(false, Live.ContainsKey("bad"));
+        equal("a=b", Live["bad"]);
         equal(false, Live.ContainsKey("invalid"));
         equal("after", get(Mixed, "AFTER", "k"));
         equal("EMPTY|S|s", String.Join("|", Mixed.listDictionaries().ToArray()));
@@ -959,7 +987,7 @@ class ConfigurationFileTests
         equal("modified", new ConfigurationFile("mixed.ini").getDictionary("S")["k"]);
         equal("caffè 日本", new ConfigurationFile("mixed.ini").getDictionary("S")["unicode"]);
         string Saved = File.ReadAllText("mixed.ini");
-        Live["bad"] = "a=b";
+        Live["bad"] = "line\nbreak";
         throws<InvalidOperationException>(delegate { Mixed.save("mixed.ini"); });
         equal(Saved, File.ReadAllText("mixed.ini"));
         throws<ArgumentNullException>(delegate { Mixed.getDictionary(null); });
@@ -1306,6 +1334,7 @@ class ConfigurationFileTests
 
     static int Main()
     {
+        test("sections and dictionaries split at the first separator and preserve values through saving", firstSeparator);
         test("load errors include source paths, filenames, line numbers and include chains", diagnosticContext);
         test("INCLUDE aliases load files from the current directory with isolated parser state", includeBlocks);
         test("getEncoded flag selects raw bytes or independent Base64 ASCII bytes", encodedFlag);

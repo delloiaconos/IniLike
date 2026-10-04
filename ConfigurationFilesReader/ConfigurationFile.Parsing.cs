@@ -170,7 +170,7 @@ namespace ConfigurationFilesReader
                     } else if (reading == BlockTypes.Text) {
                         dictTexts[currentParent].Add(RawLine);
                     } else if (reading == BlockTypes.Section || reading == BlockTypes.Dictionary) {
-                        string[] sline = currentLine.Split(parSeparator);
+                        string[] sline = currentLine.Split(parSeparator, 2);
                         if (sline.Length == 2) {
                             strDictionary Entries = reading == BlockTypes.Section ? dictSections[currentParent] : dictDictionaries[currentParent];
                             Entries.Add(sline[0].Trim(), sline[1].Trim().TrimEnd(parEndLineDelimiter));

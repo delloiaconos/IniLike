@@ -106,7 +106,7 @@ The validator prints the contextual message and its original inner exception.
 | `2` | Invalid arguments, unknown options or incompatible options. |
 
 Validation follows the existing parser's permissive rules. For example, lines
-outside blocks or section lines with multiple `=` characters are ignored, not
+outside blocks or section/dictionary lines without `=` are ignored, not
 reported as syntax errors. Success means the library can load the file; it does
 not guarantee that every line was consumed or that application-specific values
 are valid. Duplicates, mismatched `END` labels and malformed Base64 payloads
