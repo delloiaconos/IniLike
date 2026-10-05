@@ -33,19 +33,19 @@ namespace ConfigurationFilesReader
             foreach (string SecName in listSections()) {
                 Writer.WriteLine("[" + SecName + "]");
                 foreach (string Parameter in listParameters(SecName)) {
-                    Writer.WriteLine(Parameter + "=" + dictSections[SecName][Parameter] + ";");
+                    Writer.WriteLine(Parameter + "=" + dictSections[SecName][Parameter]);
                 }
             }
             foreach (string Table in listTables()) {
                 Writer.WriteLine("[TABLE:" + Table + "]");
                 foreach (string Row in dictTables[Table]) {
-                    Writer.WriteLine(Row + ";");
+                    Writer.WriteLine(Row);
                 }
             }
             foreach (string Name in listLists()) {
                 Writer.WriteLine("[LIST:" + Name + "]");
                 foreach (string Item in dictLists[Name]) {
-                    Writer.WriteLine(Item + ";");
+                    Writer.WriteLine(Item);
                 }
             }
             foreach (string Name in listDictionaries()) {
@@ -53,7 +53,7 @@ namespace ConfigurationFilesReader
                 List<string> Keys = new List<string>(dictDictionaries[Name].Keys);
                 Keys.Sort(StringComparer.Ordinal);
                 foreach (string Key in Keys) {
-                    Writer.WriteLine(Key + "=" + dictDictionaries[Name][Key] + ";");
+                    Writer.WriteLine(Key + "=" + dictDictionaries[Name][Key]);
                 }
             }
             foreach (string Name in listTexts()) {

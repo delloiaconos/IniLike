@@ -85,6 +85,9 @@ directives are not preserved and included files are left unchanged unless explic
 selected as the output destination. Missing files, cycles and included-file parsing
 errors produce exit code 1.
 
+Rewriting preserves trailing `;`, `,` and `.` in sections, dictionaries, tables
+and lists as literal content. It does not add punctuation terminators.
+
 ## Diagnostics and exit codes
 
 Without listing or rewrite options, successful loading prints section, table,

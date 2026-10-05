@@ -68,7 +68,7 @@ class ConfigurationFileTests
         DirectoryInfo BaseDirectory = Directory.CreateDirectory("config files");
         string FileName = "settings.ini";
         string FullPath = Path.Combine(BaseDirectory.FullName, FileName);
-        const string Source = "[S]\nk=value;\n";
+        const string Source = "[S]\nk=value\n";
         File.WriteAllText(FullPath, Source);
         foreach (ConfigurationFile Config in new ConfigurationFile[] {
             new ConfigurationFile(Path.Combine("config files", FileName)),
@@ -121,7 +121,7 @@ class ConfigurationFileTests
 
     static void streamConstructors()
     {
-        const string Text = "## comment\n[SEC:S]\nk=café;\n[END:S]\nignored=value\n[TBL:T]\nrow;\n[END]\n[LST:L]\nx=a=b;\n[DICTIONARY:D]\nk=value;\n";
+        const string Text = "## comment\n[SEC:S]\nk=café\n[END:S]\nignored=value\n[TBL:T]\nrow\n[END]\n[LST:L]\nx=a=b\n[DICTIONARY:D]\nk=value\n";
         foreach (System.Text.Encoding Encoding in new System.Text.Encoding[] {
             new System.Text.UTF8Encoding(false), new System.Text.UTF8Encoding(true),
             System.Text.Encoding.Unicode, System.Text.Encoding.BigEndianUnicode }) {
@@ -214,7 +214,7 @@ class ConfigurationFileTests
             equal(true, field != null && field.IsInitOnly && !field.IsStatic);
         }
         equal("=", new string(cfg.parSeparator));
-        equal(";,.", new string(cfg.parEndLineDelimiter));
+        equal("", new string(cfg.parEndLineDelimiter));
         equal(false, cfg.checkSection("missing"));
         cfg.setParameter("S", "existing", "value");
         foreach (string section in new string[] { "missing", "S" })
@@ -234,7 +234,7 @@ class ConfigurationFileTests
 
     static void firstSeparator()
     {
-        const string Entries = " expression = a=b=c;\npadding=Zg==;\nleading==value;\nempty=;\n=unnamed=value;\ninvalid\n";
+        const string Entries = " expression = a=b=c\npadding=Zg==\nleading==value\nempty=\n=unnamed=value\ninvalid\n";
         foreach (string Header in new string[] { "S", "SEC:S", "SECTION:S", "DICT:S", "DICTIONARY:S" }) {
             bool Dictionary = Header.StartsWith("DICT", StringComparison.Ordinal);
             ConfigurationFile Config = load("[" + Header + "]\n" + Entries + "[END:S]\n");
@@ -268,20 +268,20 @@ class ConfigurationFileTests
             "inline=hello ## literal;\r\npath=./ricette/;\r\nunicode=caffè 日本;\r\n[Other]\r\nkey=last");
         equal(true, cfg.checkSection("S"));
         equal(false, cfg.checkSection("s"));
-        equal("value", get(cfg, "S", "key"));
+        equal("value;", get(cfg, "S", "key"));
         equal("fallback", get(cfg, "S", "Key"));
-        equal("", get(cfg, "S", "empty"));
-        equal("unnamed", get(cfg, "S", ""));
+        equal(";", get(cfg, "S", "empty"));
+        equal("unnamed;", get(cfg, "S", ""));
         equal("fallback", get(cfg, "S", "invalid"));
-        equal("a=b", get(cfg, "S", "multi"));
+        equal("a=b;", get(cfg, "S", "multi"));
         equal("fallback", get(cfg, "S", "ignored"));
-        equal("value", get(cfg, "S", "punctuation"));
-        equal("", get(cfg, "S", "dot"));
-        equal("value ", get(cfg, "S", "space"));
-        equal("\"hello\"", get(cfg, "S", "quoted"));
-        equal("hello ## literal", get(cfg, "S", "inline"));
-        equal("./ricette/", get(cfg, "S", "path"));
-        equal("caffè 日本", get(cfg, "S", "unicode"));
+        equal("value.,;", get(cfg, "S", "punctuation"));
+        equal(".;", get(cfg, "S", "dot"));
+        equal("value ;", get(cfg, "S", "space"));
+        equal("\"hello\";", get(cfg, "S", "quoted"));
+        equal("hello ## literal;", get(cfg, "S", "inline"));
+        equal("./ricette/;", get(cfg, "S", "path"));
+        equal("caffè 日本;", get(cfg, "S", "unicode"));
         equal("last", get(cfg, "Other", "key"));
     }
 
@@ -291,11 +291,11 @@ class ConfigurationFileTests
             "x=y;\n.;\n[S]\nk=v\n[TABLE:EMPTY]\n[ROWS]\nkey=section\n[table:lower]\nk=v\n");
         List<string> rows = cfg.getTable("ROWS");
         equal(5, rows.Count);
-        equal("a;b;c", rows[0]);
-        equal("d;e", rows[1]);
+        equal("a;b;c;", rows[0]);
+        equal("d;e.,;", rows[1]);
         equal("; comment", rows[2]);
-        equal("x=y", rows[3]);
-        equal("", rows[4]);
+        equal("x=y;", rows[3]);
+        equal(".;", rows[4]);
         equal("v", get(cfg, "S", "k"));
         equal("section", get(cfg, "ROWS", "key"));
         equal(false, cfg.checkSection("EMPTY"));
@@ -311,9 +311,9 @@ class ConfigurationFileTests
         rows[0] = "replacement";
         rows.RemoveAt(1);
         equal(5, cfg.getTable("ROWS").Count);
-        equal("a;b;c", cfg.getTable("ROWS")[0]);
-        equal("d;e", cfg.getTable("ROWS")[1]);
-        equal("a;b;c", Other[0]);
+        equal("a;b;c;", cfg.getTable("ROWS")[0]);
+        equal("d;e.,;", cfg.getTable("ROWS")[1]);
+        equal("a;b;c;", Other[0]);
         rows.Clear();
         equal(5, Other.Count);
         equal(5, cfg.getTable("ROWS").Count);
@@ -334,10 +334,10 @@ class ConfigurationFileTests
             foreach (string culture in new string[] { "en-US", "it-IT", "tr-TR" })
             {
                 System.Threading.Thread.CurrentThread.CurrentCulture = new CultureInfo(culture);
-                ConfigurationFile cfg = load("[S]\nnumber=1,25;\nnegative=-12;\nexp=1.25e2;\n" +
-                    "max=9223372036854775807;\nmin=-9223372036854775808;\n" +
-                    "overflow=9223372036854775808;\nwrap=2147483648;\n" +
-                    "intmax=2147483647;\nintmin=-2147483648;\nbad=abc;\nempty=;\n");
+                ConfigurationFile cfg = load("[S]\nnumber=1,25\nnegative=-12\nexp=1.25e2\n" +
+                    "max=9223372036854775807\nmin=-9223372036854775808\n" +
+                    "overflow=9223372036854775808\nwrap=2147483648\n" +
+                    "intmax=2147483647\nintmin=-2147483648\nbad=abc\nempty=\n");
                 equal(1.25, cfg.getParameter("S", "number", 0.0));
                 equal(1.25f, cfg.getParameter("S", "number", 0f));
                 equal(125.0, cfg.getParameter("S", "exp", 0.0));
@@ -376,14 +376,14 @@ class ConfigurationFileTests
             cfg.setParameter("S", "b", value);
             equal(false, cfg.getParameter("S", "b", true));
         }
-        ConfigurationFile parsed = load("[S]\non=1;\noff=0;\n");
+        ConfigurationFile parsed = load("[S]\non=1\noff=0\n");
         equal(true, parsed.getParameter("S", "on", false));
         equal(false, parsed.getParameter("S", "off", true));
     }
 
     static void overrides()
     {
-        const string source = "[S]\nkey=original;\n[TABLE:ROWS]\na;b;\n";
+        const string source = "[S]\nkey=original\n[TABLE:ROWS]\na;b\n";
         ConfigurationFile cfg = loadForUpdates(source);
 
         cfg.setParameter("S", "key", "override");
@@ -413,7 +413,7 @@ class ConfigurationFileTests
 
     static void memoryDefaults()
     {
-        const string source = "[S]\nk=original;\n[TABLE:ROWS]\na;b;\n";
+        const string source = "[S]\nk=original\n[TABLE:ROWS]\na;b\n";
         ConfigurationFile cfg = loadForUpdates(source);
 
         cfg.addParameter("S", "k", "replacement");
@@ -458,7 +458,7 @@ class ConfigurationFileTests
 
     static void getterDefaults()
     {
-        const string source = "[S]\nk=original;\n";
+        const string source = "[S]\nk=original\n";
         ConfigurationFile cfg = load(source);
 
         equal(false, cfg.checkSection("missing"));
@@ -537,12 +537,12 @@ class ConfigurationFileTests
         equal(Serialized, File.ReadAllText(Path.Combine("output files", "combined.ini")));
         ConfigurationFile Reloaded = new ConfigurationFile("copy.ini");
         equal("caffè 日本", get(Reloaded, "S", "k"));
-        equal("", get(Reloaded, "S", "empty"));
-        equal("value ", get(Reloaded, "S", "space"));
+        equal(";", get(Reloaded, "S", "empty"));
+        equal("value ;", get(Reloaded, "S", "space"));
         equal(12, Reloaded.getParameter("NEW", "number", 0));
         equal(true, Reloaded.checkSection("EMPTY"));
         equal(0, Reloaded.getTable("EMPTY").Count);
-        equal("a;b|", String.Join("|", Reloaded.getTable("S").ToArray()));
+        equal("a;b;|.;", String.Join("|", Reloaded.getTable("S").ToArray()));
         string OriginalDirectory = Environment.CurrentDirectory;
         try {
             Environment.CurrentDirectory = Path.Combine(OriginalDirectory, "output files");
@@ -576,7 +576,7 @@ class ConfigurationFileTests
         throws<ArgumentNullException>(delegate { Config.save(new FileInfo("."), null); });
         const string Original = "keep this file unchanged";
         File.WriteAllText("destination.ini", Original);
-        foreach (string Value in new string[] { null, "line\nbreak", " leading", "trailing.", "trailing;" }) {
+        foreach (string Value in new string[] { null, "line\nbreak", " leading", "trailing " }) {
             Config.setParameter("S", "k", Value);
             throws<InvalidOperationException>(delegate { Config.save("destination.ini"); });
             equal(Original, File.ReadAllText("destination.ini"));
@@ -690,8 +690,8 @@ class ConfigurationFileTests
         ConfigurationFile Config = loadForUpdates("[Z]\nb=2\na=caffè 日本\n[A]\n[TABLE:T]\nfirst;row\nsecond\n");
         Config.addParameter("Z", "c", "3");
         string Expected = String.Join(Environment.NewLine, new string[] {
-            "[A]", "[Z]", "a=caffè 日本;", "b=2;", "c=3;",
-            "[TABLE:T]", "first;row;", "second;", "" });
+            "[A]", "[Z]", "a=caffè 日本", "b=2", "c=3",
+            "[TABLE:T]", "first;row", "second", "" });
         Stream OwnedStream;
         using (StreamWriter Writer = Config.dump()) {
             OwnedStream = Writer.BaseStream;
@@ -881,7 +881,7 @@ class ConfigurationFileTests
             "x1=mach1.volt1\nx2=mach1.current1\nx3=acq2.sensor1\nx4=acq2.sensor3\nx5=pil1.duty\n"
         };
         string[] Expected = {
-            "mach1|pil1|acq2",
+            "mach1;|pil1;|acq2;",
             "x1=mach1.volt1|x2=mach1.current1|x3=acq2.sensor1|x4=acq2.sensor3|x5=pil1.duty"
         };
         foreach (string Keyword in new string[] { "LIST", "LST" }) {
@@ -902,7 +902,7 @@ class ConfigurationFileTests
             }
         }
         ConfigurationFile Mixed = load("[LST:SHARED]\n## ignored\n\nsame;\nsame;\nx=a=b;\n.;\n[SEC:SHARED]\nk=v\n[TBL:SHARED]\nrow\n[LST:EMPTY]\n[END:EMPTY]\n[LIST:shared]\nlast\n[END]\n[SECTION:AFTER]\nk=end\n");
-        equal("same|same|x=a=b|", String.Join("|", Mixed.getList("SHARED").ToArray()));
+        equal("same;|same;|x=a=b;|.;", String.Join("|", Mixed.getList("SHARED").ToArray()));
         equal("v", get(Mixed, "SHARED", "k"));
         equal("row", Mixed.getTable("SHARED")[0]);
         equal("end", get(Mixed, "AFTER", "k"));
@@ -959,7 +959,7 @@ class ConfigurationFileTests
                 equal(true, File.ReadAllText("dictionary.ini").StartsWith("[DICT:CHANNELS]"));
             }
         }
-        ConfigurationFile Mixed = load("[SEC:S]\nk=section\n[TBL:S]\nrow\n[LST:S]\nitem\n[DICT:S]\n## skip\n\nk=dictionary\nK=case\nempty=;\n=unnamed\nbad=a=b\ninvalid\n[DICTIONARY:EMPTY]\n[END]\n[DICT:s]\nk=lower\n[END:s]\n[SEC:AFTER]\nk=after\n");
+        ConfigurationFile Mixed = load("[SEC:S]\nk=section\n[TBL:S]\nrow\n[LST:S]\nitem\n[DICT:S]\n## skip\n\nk=dictionary\nK=case\nempty=\n=unnamed\nbad=a=b\ninvalid\n[DICTIONARY:EMPTY]\n[END]\n[DICT:s]\nk=lower\n[END:s]\n[SEC:AFTER]\nk=after\n");
         equal("section", get(Mixed, "S", "k"));
         equal("row", Mixed.getTable("S")[0]);
         equal("item", Mixed.getList("S")[0]);
@@ -1334,7 +1334,7 @@ class ConfigurationFileTests
 
     static void nameCaseSensitivity()
     {
-        const string Source = "[SEC:Server]\nHost=LocalHOST;\n[END:server]\n[DICT:Options]\nMode=Mixed;\n[END:OPTIONS]\n[TBL:Rows]\nRawRow;\n[END:rows]\n[LST:Items]\nRawItem;\n[END:items]\n[TXT:Notes]\nRawText\n[END:notes]\n[ENC:Bytes]\nZg==\n[END:bytes]\n";
+        const string Source = "[SEC:Server]\nHost=LocalHOST\n[END:server]\n[DICT:Options]\nMode=Mixed\n[END:OPTIONS]\n[TBL:Rows]\nRawRow\n[END:rows]\n[LST:Items]\nRawItem\n[END:items]\n[TXT:Notes]\nRawText\n[END:notes]\n[ENC:Bytes]\nZg==\n[END:bytes]\n";
         File.WriteAllText("case.ini", Source);
         throws<FormatException>(delegate { new ConfigurationFile("case.ini"); });
         throws<FormatException>(delegate { new ConfigurationFile("case.ini", true); });
@@ -1406,8 +1406,57 @@ class ConfigurationFileTests
         equal(true, new ConfigurationFile("keywords.ini", false).checkSection("SEC:NAME"));
     }
 
+    static void literalTrailingPunctuation()
+    {
+        string[] Values = { ";", ",", ".", "value;", "value,", "value.", "value.,;;", "value ;", "a=b;", "1;", "TRUE;" };
+        foreach (bool CaseSensitive in new bool[] { true, false }) {
+            foreach (string Header in new string[] { "S", "SEC:S", "SECTION:S", "DICT:S", "DICTIONARY:S", "TABLE:S", "TBL:S", "TAB:S", "LIST:S", "LST:S" }) {
+                bool Dictionary = Header.StartsWith("DICT", StringComparison.Ordinal);
+                bool Table = Header.StartsWith("TAB", StringComparison.Ordinal) || Header.StartsWith("TBL", StringComparison.Ordinal);
+                bool List = Header.StartsWith("LIST", StringComparison.Ordinal) || Header.StartsWith("LST", StringComparison.Ordinal);
+                string Content = "[" + Header + "]\n";
+                for (int Index = 0; Index < Values.Length; Index++) {
+                    Content += "  " + (Table || List ? "" : "k" + Index + " = ") + Values[Index] + "  \n";
+                }
+                Content += "[END:S]\n";
+                File.WriteAllText("literal.ini", Content);
+                ConfigurationFile Config = new ConfigurationFile("literal.ini", CaseSensitive);
+                for (int Pass = 0; Pass < 3; Pass++) {
+                    for (int Index = 0; Index < Values.Length; Index++) {
+                        string Actual = Table ? Config.getTable("S")[Index] : List ? Config.getList("S")[Index] :
+                            Dictionary ? Config.getDictionary("S")["k" + Index] : get(Config, "S", "k" + Index);
+                        equal(Values[Index], Actual);
+                    }
+                    Config.save("literal-copy.ini");
+                    string Saved = File.ReadAllText("literal-copy.ini");
+                    equal(true, Saved.Contains("value.,;;" + Environment.NewLine));
+                    equal(false, Saved.Contains("value.,;;;"));
+                    using (StreamWriter Dump = Config.dump()) {
+                        Config = new ConfigurationFile(Dump.BaseStream, CaseSensitive);
+                    }
+                }
+                ConfigurationFile Reloaded = new ConfigurationFile("literal-copy.ini", CaseSensitive);
+                equal("value.,;;", Table ? Reloaded.getTable("S")[6] : List ? Reloaded.getList("S")[6] :
+                    Dictionary ? Reloaded.getDictionary("S")["k6"] : get(Reloaded, "S", "k6"));
+            }
+        }
+        ConfigurationFile Auto = loadForUpdates("[S]\nn=1;\nb=TRUE;\n[DICT:D]\n[LST:L]\n");
+        equal(42, Auto.getParameter("S", "n", 42));
+        equal(false, Auto.getParameter("S", "b", true));
+        Auto.autoSaveRegistry = true;
+        Auto.addParameter("S", "punctuation", "value.,;");
+        equal("value.,;", get(new ConfigurationFile("config.ini"), "S", "punctuation"));
+        Auto.getDictionary("D")["key"] = ".,;";
+        Auto.getList("L").Add(".,;");
+        Auto.save();
+        ConfigurationFile Copy = new ConfigurationFile("config.ini");
+        equal(".,;", Copy.getDictionary("D")["key"]);
+        equal(".,;", Copy.getList("L")[0]);
+    }
+
     static int Main()
     {
+        test("trailing punctuation is literal in sections, dictionaries, tables and lists", literalTrailingPunctuation);
         test("name comparison is selectable and defaults to case-sensitive", nameCaseSensitivity);
         test("sections and dictionaries split at the first separator and preserve values through saving", firstSeparator);
         test("load errors include source paths, filenames, line numbers and include chains", diagnosticContext);
@@ -1454,10 +1503,10 @@ class ConfigurationFileTests
             ConfigurationFile cfg = load("[S]\nk=value;\n");
             char[] separators = cfg.parSeparator;
             char[] delimiters = cfg.parEndLineDelimiter;
-            separators[0] = ':'; delimiters[0] = 'e';
+            separators[0] = ':';
             equal(":", new string(cfg.parSeparator));
-            equal("e,.", new string(cfg.parEndLineDelimiter));
-            equal("value", get(cfg, "S", "k"));
+            equal(0, delimiters.Length);
+            equal("value;", get(cfg, "S", "k"));
         });
         Console.WriteLine("{0} passed, {1} failed; {2} assertions", passed, failed, assertions);
         return failed == 0 ? 0 : 1;

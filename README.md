@@ -30,16 +30,16 @@ lists, dictionaries, text, encoded data and includes are other block types.
 ```ini
 ## Full-line comment
 [SERVER]
-host = localhost;
-port = 8080;
-enabled = TRUE;
+host = localhost
+port = 8080
+enabled = TRUE
 
 [DIRECTORIES]
-data = ./data/;
+data = ./data/
 
 [TABLE:ITEMS]
-first; 10; active;
-second; 20; inactive;
+first; 10; active
+second; 20; inactive
 ```
 
 - `[NAME]`, `[SEC:NAME]` and `[SECTION:NAME]` are equivalent headers for section blocks
@@ -48,10 +48,10 @@ second; 20; inactive;
   The library returns a `List<string>`;
   callers are responsible for splitting rows into columns.
 - `[LIST:NAME]` and `[LST:NAME]` are equivalent list headers. Every data line is
-  one string item: `mach1;` becomes `mach1`, and `x1=mach1.volt1` remains the
+  one string item: `mach1;` remains `mach1;`, and `x1=mach1.volt1` remains the
   complete string `x1=mach1.volt1`. Items are not parsed as key/value pairs;
-  order and duplicates are preserved. Lists use the same whitespace trimming,
-  trailing delimiters and full-line comment rules as tables.
+  order, punctuation and duplicates are preserved. Lists use the same whitespace
+  trimming and full-line comment rules as tables.
 - `[DICT:NAME]` and `[DICTIONARY:NAME]` are equivalent dictionary headers.
   Entries are string keys and string values: `x = 3` stores `"3"`, and
   `y = 3.14` stores `"3.14"`. They use the same key/value parsing, trimming and
@@ -112,11 +112,10 @@ second; 20; inactive;
   case-sensitive, takes precedence over block headers, and applies only
   to full-line comments. Null or empty prefix entries are ignored.
 - Outside text content, leading and trailing whitespace is trimmed from lines, block names, keys,
-  and values. All trailing `;`, `,`, and `.` characters are then removed from
-  values, table rows and list items. Whitespace exposed by removing these delimiters is
-  preserved.
+  and values. Trailing `;`, `,`, and `.` are literal content in section and
+  dictionary values, table rows and list items; they are never stripped.
 - Section and dictionary entries split at the **first** `=` only. Additional
-  `=` characters belong to the value: `expression = a=b;` stores `a=b`.
+  `=` characters belong to the value: `expression = a=b;` stores `a=b;`.
   Lines without `=` are ignored; empty keys and values remain supported.
 - Quoting, escaping, multiline values, and inline comments are not supported.
   Quotes remain part of the value. A line such as `; comment` is treated as
@@ -127,8 +126,11 @@ second; 20; inactive;
 - Relative configuration file paths are resolved against the working directory.
   Paths stored as values are returned as text without resolution.
 
-The trailing `.` delimiter can alter meaningful data: `value...` becomes `value`, and a single `.` becomes an empty string. 
-Use `./` to represent the current directory. 
+Punctuation is preserved: `value...` remains `value...`, and a single `.` remains `.`.
+Files that previously used a trailing semicolon as a terminator must remove it if
+it is not intended as part of the value. For example, write `port = 8080` and
+`enabled = TRUE`; `8080;` and `TRUE;` are now literal strings and do not parse as
+that number or boolean. Whitespace trimming and typed conversion rules are unchanged.
 The parser supports the format described here rather than a complete INI specification.
 
 ## Usage
@@ -141,6 +143,7 @@ Example configuration files are in [`examples/`](examples/):
 | [sections.ini](examples/sections.ini) | Plain, `SEC` and `SECTION` headers; boolean `0`/`1`; optional named and unnamed `END`. |
 | [tables.ini](examples/tables.ini) | `TABLE`/`TBL`, test phases, blank columns and empty tables. |
 | [lists.ini](examples/lists.ini) | `LIST`/`LST`, plain items and literal assignments, repeated items and empty lists. |
+| [punctuation.ini](examples/punctuation.ini) | Literal trailing semicolons, commas and periods in sections, dictionaries, tables and lists. |
 | [dictionaries.ini](examples/dictionaries.ini) | `DICT`/`DICTIONARY`, string key/value entries and optional endings. |
 | [texts.ini](examples/texts.ini) | Raw Unicode text, blank lines, punctuation and transitions using `TEXT`/`TXT`. |
 | [encoded.ini](examples/encoded.ini) | `ENCODED`/`ENC`, legacy aliases, wrapped Base64 data and empty blocks. |
@@ -487,16 +490,16 @@ first save. Parent directories must already exist; null arguments are rejected.
 Output uses UTF-8 without a BOM, ordinally sorted section/parameter/table names,
 and the current order of table rows and list items. Comments, source ordering and original
 formatting outside text content are not preserved. Text content retains its raw
-lines, including whitespace and comment-looking lines. Saving uses the standard `=` separator and `;`
-terminator regardless of mutations to the public delimiter arrays; text content
-has no added terminators. Base64 data also has no added terminators, and its
-decoded bytes are included in round-trip validation.
+lines, including whitespace and comment-looking lines. Saving uses the standard `=`
+separator and adds no punctuation terminators to any block. Existing trailing
+punctuation is preserved exactly. Base64 decoded bytes are included in round-trip
+validation.
 
 `save` obtains the serialized bytes from `dump()`, copies them to a temporary file
 in the destination directory, closes that file, and reloads it with
 the standard parser and checks that all names and values are preserved. Data the
-format cannot represent (for example null values, values containing `=`, or
-significant trailing punctuation) causes `InvalidOperationException` rather than
+format cannot represent (for example null values, multiline values, or
+leading/trailing whitespace outside text blocks) causes `InvalidOperationException` rather than
 a lossy save. No quoting or escaping is introduced.
 
 An existing destination is replaced with `File.Replace`; a new destination is
@@ -532,7 +535,9 @@ The array references cannot be reassigned, but their elements remain mutable.
 The public readonly `parComment` array contains comment prefixes (default `##`).
 Changing its elements after construction does not reparse already loaded data;
 there is no public reload method or constructor option for custom prefixes.
-They default to `=` and `; , .`. Changing them after construction does not reload or change already parsed values. 
+`parSeparator` defaults to `=`. `parEndLineDelimiter` is retained as an empty
+readonly array for API compatibility and is no longer used by parsing or saving.
+Changing separator elements after construction does not reload already parsed values.
 There is no public reload method.
 `autoUpdateRegistry` defaults to false for every constructor. Set the property to true or false at any time to enable
 or disable creation of missing entries. Changing it does not remove existing data
@@ -635,7 +640,7 @@ The suite covers:
 
 - Sections, tables, mutable lists, raw Unicode text blocks, Base64 binary data, and transitions between blocks.
 - Includes from files and streams, current-directory paths, duplicates, cycles, nesting limits, and flattened saves.
-- Comments, whitespace, delimiters, Unicode, and selectable name case sensitivity.
+- Comments, whitespace, literal trailing punctuation, Unicode, and selectable name case sensitivity.
 - Defaults for every getter overload, boolean conversion, and numeric conversion
   under three cultures, including integer boundaries and overflow behavior.
 - Empty files, missing files, and duplicate sections, tables, and keys.

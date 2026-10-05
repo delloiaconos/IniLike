@@ -97,12 +97,21 @@ def main():
         check(["--parameters", "--", dashed.name], 0, outputs["--parameters"], exact=True)
         assert listing.read_bytes() == original
         assert dashed.read_bytes() == original
-        canonical = ("[Alpha]\nA=4;\nshared=3;\n[Plain]\na=5;\n[Zulu]\nshared=1;\nz=2;\n"
-                     "[TABLE:Alpha]\nrow;\n[TABLE:Zulu]\ntableOnly=8;\n"
-                     "[LIST:Alpha]\nitem;\n[LIST:Zulu]\nlistOnly=9;\n"
-                     "[DICT:Alpha]\nx=7;\n[DICT:Zulu]\ndictOnly=6;\n")
+        canonical = ("[Alpha]\nA=4\nshared=3\n[Plain]\na=5\n[Zulu]\nshared=1\nz=2\n"
+                     "[TABLE:Alpha]\nrow\n[TABLE:Zulu]\ntableOnly=8\n"
+                     "[LIST:Alpha]\nitem\n[LIST:Zulu]\nlistOnly=9\n"
+                     "[DICT:Alpha]\nx=7\n[DICT:Zulu]\ndictOnly=6\n")
         check([listing.name, "--rewrite"], 0, canonical, exact=True)
         check(["--rewrite", listing.name], 0, canonical, exact=True)
+        punctuation = root / "punctuation.ini"
+        punctuation_text = "[S]\nk=value.,;\n[DICT:D]\nk=.;,\n[TABLE:T]\nrow;,.;\n[LIST:L]\nitem.,;\n"
+        punctuation.write_text(punctuation_text, encoding="utf-8")
+        punctuation_dump = "[S]\nk=value.,;\n[TABLE:T]\nrow;,.;\n[LIST:L]\nitem.,;\n[DICT:D]\nk=.;,\n"
+        check([punctuation.name, "--rewrite"], 0, punctuation_dump, exact=True)
+        check([punctuation.name, "--rewrite", "punctuation-copy.ini"], 0, "", exact=True)
+        check(["punctuation-copy.ini", "--rewrite"], 0, punctuation_dump, exact=True)
+        assert punctuation.read_text(encoding="utf-8") == punctuation_text
+
         check(["empty.ini", "--rewrite"], 0, "", exact=True)
         check(["--rewrite"], 2, "expected exactly one", True)
         check([listing.name, "--rewrite", ""], 2, "expected exactly one", True)
@@ -152,7 +161,7 @@ def main():
         included_original = (root / "dictionary.ini").read_bytes()
         include_original = (root / "include.ini").read_bytes()
         check(["include.ini", "--dictionaries"], 0, "Dictionaries:\nCHANNELS\n", exact=True)
-        included_dump = "[DICT:CHANNELS]\nx=3;\ny=3.14;\n"
+        included_dump = "[DICT:CHANNELS]\nx=3\ny=3.14\n"
         check(["include.ini", "--rewrite"], 0, included_dump, exact=True)
         check(["include.ini", "--rewrite", "include-copy.ini"], 0, "", exact=True)
         assert (root / "include-copy.ini").read_text(encoding="utf-8") == included_dump
@@ -167,7 +176,7 @@ def main():
         check(["invalid-base64.ini"], 1, "Source '" + str(root / "invalid-base64.ini") + "', line 1", True)
         unicode_file = root / "unicode.ini"
         unicode_file.write_text("## comment\n[SEC:É]\nname=caffè\n[END]\n", encoding="utf-8")
-        check([unicode_file.name, "--rewrite"], 0, "[É]\nname=caffè;\n", exact=True)
+        check([unicode_file.name, "--rewrite"], 0, "[É]\nname=caffè\n", exact=True)
     print("PASS: {0} console validation checks; rewrite and input preservation verified.".format(checked))
 
 

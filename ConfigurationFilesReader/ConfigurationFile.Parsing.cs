@@ -173,11 +173,11 @@ namespace ConfigurationFilesReader
                         string[] sline = currentLine.Split(parSeparator, 2);
                         if (sline.Length == 2) {
                             strDictionary Entries = reading == BlockTypes.Section ? dictSections[currentParent] : dictDictionaries[currentParent];
-                            Entries.Add(sline[0].Trim(), sline[1].Trim().TrimEnd(parEndLineDelimiter));
+                            Entries.Add(sline[0].Trim(), sline[1].Trim());
                         }
                     } else if (reading == BlockTypes.Table || reading == BlockTypes.List) {
                         List<string> Rows = reading == BlockTypes.Table ? dictTables[currentParent] : dictLists[currentParent];
-                        Rows.Add(currentLine.TrimEnd(parEndLineDelimiter));
+                        Rows.Add(currentLine);
                     }
                 }
                 if (reading == BlockTypes.Encoded) {
