@@ -24,7 +24,7 @@ namespace ConfigurationFilesReader
                 throw new ArgumentNullException("DictionaryName");
             }
             strDictionary Entries;
-            return dictDictionaries.TryGetValue(DictionaryName, out Entries) ? Entries : new strDictionary();
+            return dictDictionaries.TryGetValue(DictionaryName, out Entries) ? Entries : new strDictionary(NameComparer);
         }
     }
 }

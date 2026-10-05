@@ -121,7 +121,7 @@ namespace ConfigurationFilesReader
                 }
                 ConfigurationFile Reloaded;
                 try {
-                    Reloaded = new ConfigurationFile(TemporaryPath);
+                    Reloaded = new ConfigurationFile(TemporaryPath, CaseSensitive);
                 } catch (FormatException Error) {
                     throw new InvalidOperationException("The configuration cannot be represented by the INI-like format.", Error);
                 } catch (ArgumentException Error) {

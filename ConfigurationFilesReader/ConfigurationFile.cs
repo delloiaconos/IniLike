@@ -15,15 +15,28 @@ namespace ConfigurationFilesReader
         public bool autoUpdateRegistry { get; set; }
         public bool autoSaveRegistry { get; set; }
 
+        public bool CaseSensitive { get; private set; }
+
+        private readonly StringComparer NameComparer;
         private readonly FileInfo FilePath;
 
         public ConfigurationFile(string FileName)
-            : this(new FileInfo(FileName))
+            : this(FileName, true)
+        {
+        }
+
+        public ConfigurationFile(string FileName, bool CaseSensitive)
+            : this(new FileInfo(FileName), CaseSensitive)
         {
         }
 
         public ConfigurationFile(FileInfo FilePath)
-            : this()
+            : this(FilePath, true)
+        {
+        }
+
+        public ConfigurationFile(FileInfo FilePath, bool CaseSensitive)
+            : this(CaseSensitive)
         {
             if (FilePath == null) {
                 throw new ArgumentNullException("Expected 'FilePath' not null!");
@@ -40,7 +53,12 @@ namespace ConfigurationFilesReader
 
         // Read from the current position without taking ownership of the stream.
         public ConfigurationFile(Stream Source)
-            : this()
+            : this(Source, true)
+        {
+        }
+
+        public ConfigurationFile(Stream Source, bool CaseSensitive)
+            : this(CaseSensitive)
         {
             if (Source == null) {
                 throw new ArgumentNullException("Source");
@@ -55,18 +73,30 @@ namespace ConfigurationFilesReader
         }
 
         public ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)
-            : this(combinePath(BaseDirectory, FileName))
+            : this(BaseDirectory, FileName, true)
+        {
+        }
+
+        public ConfigurationFile(DirectoryInfo BaseDirectory, string FileName, bool CaseSensitive)
+            : this(combinePath(BaseDirectory, FileName), CaseSensitive)
         {
         }
 
         public ConfigurationFile()
+            : this(true)
         {
-            dictSections = new Dictionary<string, strDictionary>();
-            dictTables = new Dictionary<string, strTable>();
-            dictLists = new Dictionary<string, List<string>>();
-            dictDictionaries = new Dictionary<string, strDictionary>();
-            dictTexts = new Dictionary<string, List<string>>();
-            dictEncoded = new Dictionary<string, byte[]>();
+        }
+
+        public ConfigurationFile(bool CaseSensitive)
+        {
+            this.CaseSensitive = CaseSensitive;
+            NameComparer = CaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
+            dictSections = new Dictionary<string, strDictionary>(NameComparer);
+            dictTables = new Dictionary<string, strTable>(NameComparer);
+            dictLists = new Dictionary<string, List<string>>(NameComparer);
+            dictDictionaries = new Dictionary<string, strDictionary>(NameComparer);
+            dictTexts = new Dictionary<string, List<string>>(NameComparer);
+            dictEncoded = new Dictionary<string, byte[]>(NameComparer);
         }
 
         private static FileInfo combinePath(DirectoryInfo BaseDirectory, string FileName)

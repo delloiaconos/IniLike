@@ -1332,8 +1332,83 @@ class ConfigurationFileTests
         }
     }
 
+    static void nameCaseSensitivity()
+    {
+        const string Source = "[SEC:Server]\nHost=LocalHOST;\n[END:server]\n[DICT:Options]\nMode=Mixed;\n[END:OPTIONS]\n[TBL:Rows]\nRawRow;\n[END:rows]\n[LST:Items]\nRawItem;\n[END:items]\n[TXT:Notes]\nRawText\n[END:notes]\n[ENC:Bytes]\nZg==\n[END:bytes]\n";
+        File.WriteAllText("case.ini", Source);
+        throws<FormatException>(delegate { new ConfigurationFile("case.ini"); });
+        throws<FormatException>(delegate { new ConfigurationFile("case.ini", true); });
+        equal(true, new ConfigurationFile().CaseSensitive);
+        equal(true, new ConfigurationFile(true).CaseSensitive);
+        equal(false, new ConfigurationFile(false).CaseSensitive);
+        CultureInfo Original = CultureInfo.CurrentCulture;
+        try {
+            System.Threading.Thread.CurrentThread.CurrentCulture = new CultureInfo("tr-TR");
+            using (MemoryStream Stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(Source))) {
+                foreach (ConfigurationFile Config in new ConfigurationFile[] {
+                    new ConfigurationFile("case.ini", false),
+                    new ConfigurationFile(new FileInfo("case.ini"), false),
+                    new ConfigurationFile(new DirectoryInfo("."), "case.ini", false),
+                    new ConfigurationFile(Stream, false) }) {
+                    equal(false, Config.CaseSensitive);
+                    equal(true, Config.checkSection("SERVER"));
+                    equal("LocalHOST", get(Config, "server", "HOST"));
+                    equal("Host", Config.listParameters("SERVER")[0]);
+                    equal("Server", Config.listSections()[0]);
+                    equal("Mixed", Config.getDictionary("OPTIONS")["mode"]);
+                    Config.getDictionary("options")["MODE"] = "Changed";
+                    equal(1, Config.getDictionary("Options").Count);
+                    equal("RawRow", Config.getTable("ROWS")[0]);
+                    equal("RawItem", Config.getList("ITEMS")[0]);
+                    equal("RawText", Config.getText("NOTES"));
+                    equal((byte)102, Config.getEncoded("BYTES")[0]);
+                    Config.getDictionary("missing")["Key"] = "detached";
+                    equal(false, Config.getDictionary("missing").Comparer.Equals("A", "b"));
+                    equal(true, Config.getDictionary("missing").Comparer.Equals("A", "a"));
+                    Config.autoUpdateRegistry = true;
+                    Config.addParameter("SERVER", "HOST", "ignored");
+                    Config.setParameter("server", "host", "Updated");
+                    equal("Updated", get(Config, "Server", "Host"));
+                    Config.addParameter("New", "KEY", "Value");
+                    equal("Value", get(Config, "NEW", "key"));
+                    Config.addParameter("Other", "key", "Second");
+                    equal(2, Config.listParameters().Count);
+                    Config.save("copy.ini");
+                    ConfigurationFile Reloaded = new ConfigurationFile("copy.ini", false);
+                    equal("Updated", get(Reloaded, "SERVER", "HOST"));
+                    equal("Changed", Reloaded.getDictionary("OPTIONS")["mode"]);
+                    equal("Host", Reloaded.listParameters("server")[0]);
+                }
+                equal(true, Stream.CanRead);
+            }
+        } finally { System.Threading.Thread.CurrentThread.CurrentCulture = Original; }
+        foreach (string Prefix in new string[] { "SEC:", "DICT:", "TBL:", "LST:", "TXT:", "ENC:" }) {
+            File.WriteAllText("duplicates.ini", "[" + Prefix + "Name]\n[" + Prefix + "name]\n");
+            new ConfigurationFile("duplicates.ini");
+            throws<ArgumentException>(delegate { new ConfigurationFile("duplicates.ini", false); });
+        }
+        foreach (string Prefix in new string[] { "SEC:", "DICT:" }) {
+            File.WriteAllText("duplicates.ini", "[" + Prefix + "Name]\nKey=1\nkey=2\n");
+            new ConfigurationFile("duplicates.ini");
+            throws<ArgumentException>(delegate { new ConfigurationFile("duplicates.ini", false); });
+        }
+        File.WriteAllText("child.ini", "[SEC:Included]\nKey=Value\n[END:included]\n");
+        File.WriteAllText("parent.ini", "[INCLUDE:child.ini]\n");
+        ConfigurationFile Included = new ConfigurationFile("parent.ini", false);
+        equal("Value", get(Included, "INCLUDED", "KEY"));
+        Included.autoUpdateRegistry = true;
+        Included.autoSaveRegistry = true;
+        Included.addParameter("included", "NewKey", "NewValue");
+        equal("NewValue", get(new ConfigurationFile("parent.ini", false), "INCLUDED", "NEWKEY"));
+        File.WriteAllText("wrong.ini", "[SEC:Name]\n[END:other]\n");
+        throws<FormatException>(delegate { new ConfigurationFile("wrong.ini", false); });
+        File.WriteAllText("keywords.ini", "[sec:Name]\nKey=Value\n");
+        equal(true, new ConfigurationFile("keywords.ini", false).checkSection("SEC:NAME"));
+    }
+
     static int Main()
     {
+        test("name comparison is selectable and defaults to case-sensitive", nameCaseSensitivity);
         test("sections and dictionaries split at the first separator and preserve values through saving", firstSeparator);
         test("load errors include source paths, filenames, line numbers and include chains", diagnosticContext);
         test("INCLUDE aliases load files from the current directory with isolated parser state", includeBlocks);

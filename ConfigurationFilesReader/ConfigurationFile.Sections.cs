@@ -56,7 +56,7 @@ namespace ConfigurationFilesReader
                 throw new InvalidOperationException("Automatic saving requires an original configuration file.");
             }
             if (NewSection) {
-                Parameters = new strDictionary();
+                Parameters = new strDictionary(NameComparer);
                 dictSections.Add(SecName, Parameters);
             }
             Parameters.Add(ParName, DefaultVal);
@@ -173,7 +173,7 @@ namespace ConfigurationFilesReader
         // Return distinct parameter names across all sections, sorted ordinally.
         public List<string> listParameters()
         {
-            HashSet<string> UniqueNames = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<string> UniqueNames = new HashSet<string>(NameComparer);
             foreach (strDictionary Parameters in dictSections.Values)
                 foreach (string Name in Parameters.Keys)
                     UniqueNames.Add(Name);

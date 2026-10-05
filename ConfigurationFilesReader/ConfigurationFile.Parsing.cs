@@ -132,7 +132,7 @@ namespace ConfigurationFilesReader
                     string Name;
                     if (tryReadBlockHeader(currentLine, out Type, out Name)) {
                         if (Type == BlockTypes.None && reading != BlockTypes.None && Name != null &&
-                            !String.Equals(Name, currentParent, StringComparison.Ordinal)) {
+                            !NameComparer.Equals(Name, currentParent)) {
                             throw new FormatException("End label does not match the current block: '" + currentParent + "'.");
                         }
                         if (reading == BlockTypes.Encoded) {
@@ -147,7 +147,7 @@ namespace ConfigurationFilesReader
                                 loadIncludedFile(currentParent);
                                 break;
                             case BlockTypes.Section:
-                                dictSections.Add(currentParent, new strDictionary());
+                                dictSections.Add(currentParent, new strDictionary(NameComparer));
                                 break;
                             case BlockTypes.Table:
                                 dictTables.Add(currentParent, new strTable());
@@ -162,7 +162,7 @@ namespace ConfigurationFilesReader
                                 dictTexts.Add(currentParent, new List<string>());
                                 break;
                             case BlockTypes.Dictionary:
-                                dictDictionaries.Add(currentParent, new strDictionary());
+                                dictDictionaries.Add(currentParent, new strDictionary(NameComparer));
                                 break;
                         }
                     } else if (reading == BlockTypes.Encoded) {

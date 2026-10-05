@@ -62,7 +62,7 @@ second; 20; inactive;
   lines, `=` and trailing punctuation. Any bracketed header starts a new block,
   just as in lists; `[END]` or `[END:NAME]` closes the text block. Header recognition
   uses trimmed lines, so bracketed lines cannot be stored as literal text.
-  Text blocks have their own case-sensitive name space. `getText(name)` returns
+  Text blocks have their own name space, using the selected case mode. `getText(name)` returns
   their lines joined with `\n` (without an added final newline); original CR/LF
   line-ending style is not retained. Empty and missing blocks return `""`;
   `listTexts()` distinguishes an existing empty block from a missing one.
@@ -75,7 +75,7 @@ second; 20; inactive;
   input (including URL-safe `-`/`_` variants) throws `FormatException` during loading,
   with the block name in the diagnostic. Empty blocks decode to an empty byte array.
   `getEncoded(name)` returns decoded bytes, without interpreting them as text.
-  Encoded blocks have their own case-sensitive name space and follow the same
+  Encoded blocks have their own name space, using the selected case mode, and follow the same
   header transitions and optional `END` markers as lists.
 - `[INCLUDE:filename.ini]` loads another configuration file into the current
   registry. `INC`, `INPUT`, `LINK` and `LOAD` are equivalent identifiers. Absolute
@@ -88,7 +88,7 @@ second; 20; inactive;
   Include blocks are processed immediately and are not stored in a block registry. Following
   non-header lines are ignored until the next block, and `END` is optional.
   `[END:filename.ini]` must match the trimmed filename as written in the include
-  header, using the usual case-sensitive label check. Missing/unreadable files
+  header, using the selected case mode for label checks. Missing/unreadable files
   and parsing errors propagate. Empty filenames and include cycles throw
   `FormatException`; nesting is limited to 128 simultaneously open files to
   prevent unbounded recursion through filesystem aliases. Repeated non-recursive
@@ -102,7 +102,8 @@ second; 20; inactive;
   `[NAME]`, `[TABLE:NAME]`, `[LIST:NAME]` and `[DICT:NAME]` forms without closing markers. Text blocks are saved as `[TEXT:NAME]` followed
   by raw content lines and `[END]`. Encoded blocks use `[ENCODED:NAME]` and a single
   canonical Base64 data line without delimiters or an end marker.
-- Block names and parameter keys are **case-sensitive**. The `SEC:`, `SECTION:`,
+- Block names and section/dictionary keys are **case-sensitive by default**.
+  Pass `false` for the constructor's `CaseSensitive` argument to ignore case. The `SEC:`, `SECTION:`,
   `TABLE:`, `TBL:`, `LIST:`, `LST:`, `DICT:`, `DICTIONARY:`, `TEXT:`, `TXT:`, `ENCODED:`, `ENC:`, `BASE64:`, `B64:`, `INCLUDE:`, `INC:`, `INPUT:`, `LINK:`, `LOAD:` and `END` keywords
   must be uppercase. Sections, tables, lists, dictionaries, text and encoded blocks have separate name spaces and may
   share a name.
@@ -164,6 +165,25 @@ List<string> items = config.getTable("ITEMS");
 // Create or update a parameter in memory. The source file is unchanged.
 config.setParameter("DIRECTORIES", "data", "./other-data/");
 ```
+
+To ignore case in block names and section/dictionary keys:
+
+```csharp
+var config = new ConfigurationFile("config.ini", false);
+string host = config.getParameter("server", "HOST", "localhost");
+```
+
+Every constructor has an overload with a final `bool CaseSensitive` argument,
+including `new ConfigurationFile(false)` for an empty registry. Existing overloads
+use `true`. The public `CaseSensitive` property is read-only; choose the mode before
+loading. The option applies to all block types, included configurations, key lookups,
+updates, duplicate detection, distinct parameter listings and named `END` labels.
+Matching uses ordinal comparison, independent of the current culture. Names that
+differ only in case are duplicates in insensitive mode and still cause an exception
+within the same namespace. Original spelling and values are preserved; listings
+remain sorted ordinally. Keywords and comment prefixes keep their existing matching
+rules, and include paths keep the filesystem's path rules. Save validation uses the
+same mode; the option is not written into the file, so select it again when reloading.
 
 To create a configuration entirely in memory:
 
@@ -262,11 +282,17 @@ classDiagram
         +char[] parEndLineDelimiter
         +bool autoUpdateRegistry
         +bool autoSaveRegistry
+        +bool CaseSensitive
         +ConfigurationFile()
+        +ConfigurationFile(bool CaseSensitive)
         +ConfigurationFile(string FileName)
+        +ConfigurationFile(string FileName, bool CaseSensitive)
         +ConfigurationFile(FileInfo FilePath)
+        +ConfigurationFile(FileInfo FilePath, bool CaseSensitive)
         +ConfigurationFile(Stream Source)
+        +ConfigurationFile(Stream Source, bool CaseSensitive)
         +ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)
+        +ConfigurationFile(DirectoryInfo BaseDirectory, string FileName, bool CaseSensitive)
         %% Sections and parameters
         +checkSection(string SecName) bool
         +listSections() List~string~
@@ -304,7 +330,7 @@ classDiagram
         +save(FileInfo Path, string FileName) void
         +save(FileInfo File) void
     }
-    note for ConfigurationFile "Namespace: ConfigurationFilesReader. All three array fields are readonly. Both bool properties have get/set access and default to false."
+    note for ConfigurationFile "Namespace: ConfigurationFilesReader. All three array fields are readonly. autoUpdateRegistry and autoSaveRegistry have get/set access and default to false. CaseSensitive is read-only and defaults to true."
 ```
 
 File paths are stored internally as `System.IO.FileInfo`. 
@@ -352,7 +378,7 @@ Relative paths are resolved against the working directory when their path object
 | `save(string FileName)` | Saves to the specified path, relative to the current working directory if not rooted. |
 | `save(FileInfo Path, string FileName)` | Treats `Path.FullName` as a base directory and combines it with `FileName` using `System.IO.Path.Combine`. A rooted filename overrides the base directory. |
 | `save(FileInfo File)` | Saves to the file represented by `File`. |
-| `setParameter(string sectionName, string parameterName, string value)` | Replaces an existing value; creates missing sections and keys only when `autoUpdateRegistry=true`. Otherwise missing entries are left unchanged. Stores text without parsing or trimming and preserves case-sensitive names. Newly created entries are saved when `autoSaveRegistry=true`. |
+| `setParameter(string sectionName, string parameterName, string value)` | Replaces an existing value; creates missing sections and keys only when `autoUpdateRegistry=true`. Otherwise missing entries are left unchanged. Stores text without parsing or trimming and preserves original name spelling and uses the selected case mode. Newly created entries are saved when `autoSaveRegistry=true`. |
 | `addParameter(section, key, defaultValue)` | When `autoUpdateRegistry=true`, adds a missing parameter in memory and creates its section if needed; otherwise makes no changes. Preserves existing values, including null. Stores text unchanged; new entries are saved when `autoSaveRegistry=true`. Null section/key names throw `ArgumentNullException`; empty names are allowed. |
 
 
@@ -609,7 +635,7 @@ The suite covers:
 
 - Sections, tables, mutable lists, raw Unicode text blocks, Base64 binary data, and transitions between blocks.
 - Includes from files and streams, current-directory paths, duplicates, cycles, nesting limits, and flattened saves.
-- Comments, whitespace, delimiters, Unicode, and case-sensitive names.
+- Comments, whitespace, delimiters, Unicode, and selectable name case sensitivity.
 - Defaults for every getter overload, boolean conversion, and numeric conversion
   under three cultures, including integer boundaries and overflow behavior.
 - Empty files, missing files, and duplicate sections, tables, and keys.
