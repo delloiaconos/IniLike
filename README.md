@@ -559,6 +559,72 @@ operate on sections only. Direct dictionary mutations do not trigger automatic
 creation or saving; call `save` explicitly. Dictionary names and keys are sorted
 ordinally for dump/save, and the same round-trip validation applies to their values.
 
+### Typed dictionary values
+
+`containsDictionaryValue(DictionaryName, Key)` tests entry presence, including a
+stored null. `tryGetDictionaryValue(DictionaryName, Key, out string Value)` returns
+raw text: true for present entries (including null/empty), false and null for missing
+entries. Names use the configuration's case mode; null names throw
+`ArgumentNullException`. Section parameter APIs remain separate.
+
+Typed `tryGetDictionaryValue` overloads support `bool`, `int`, `long`, `float` and
+`double`. They return true only on successful conversion. False resets the output
+to false/zero; it never substitutes a caller default. Use the status overload to
+distinguish missing entries from invalid values:
+
+```csharp
+var options = new DictionaryConversionOptions {
+    NumericCulture = System.Globalization.CultureInfo.GetCultureInfo("it-IT"),
+    DecimalSeparator = DecimalSeparatorPolicy.Culture,
+    BooleanValues = BooleanRepresentations.TrueFalse | BooleanRepresentations.YesNo,
+    AllowNonFinite = false
+};
+double value;
+DictionaryValueStatus status;
+if (config.tryGetDictionaryValue("CHANNELS", "x", options, out value, out status))
+{
+    // Use the converted value.
+}
+else if (status == DictionaryValueStatus.InvalidValue)
+{
+    // The entry exists, but its text cannot be converted under this policy.
+}
+```
+
+Each typed overload has these forms:
+
+- `(DictionaryName, Key, out Value)` uses the defaults below.
+- `(DictionaryName, Key, Options, out Value)` selects explicit policies.
+- `(DictionaryName, Key, Options, out Value, out Status)` also reports the result.
+
+`DictionaryValueStatus` is `Success`, `MissingDictionary`, `MissingKey`, `NullValue`
+or `InvalidValue`. Typed dictionary reads return false for stored nulls with
+`NullValue`; raw string reads still return true and null. Existing parameter reads
+retain their documented null exceptions and legacy conversions.
+
+`DictionaryConversionOptions` controls conversions independently of process culture:
+
+| Option | Default and behavior |
+| --- | --- |
+| `NumericCulture` | `CultureInfo.InvariantCulture`. Supplies numeric signs, decimal separator in Culture mode, and floating-point special symbols. Null is invalid. |
+| `DecimalSeparator` | `DotOrComma` accepts either decimal separator, rejecting text containing both. `Culture` uses the selected culture's decimal separator; `Dot` or `Comma` accepts only that separator. Applies to floating-point reads. |
+| `BooleanValues` | `TrueFalse \| OneZero`. Flags also offer `YesNo` and `OnOff`; combine to opt in, or use `None` to reject all forms. Comparisons are ordinal and case-insensitive. |
+| `AllowNonFinite` | false. When true, explicit culture-specific NaN and positive/negative infinity symbols are accepted for floats/doubles. Numeric overflow is still rejected. |
+
+All conversions trim surrounding whitespace. Integers use `NumberStyles.Integer`
+and enforce their destination type's bounds. Floating-point values allow signs,
+decimals and exponents (`NumberStyles.Float`); thousands/grouping separators are
+always rejected to avoid ambiguous decimal interpretation. Finite float overflow
+is rejected; normal rounding and underflow are permitted. Empty and malformed text
+return `InvalidValue`. Null options select defaults; unknown enum values/flag bits
+throw `ArgumentException`, and null `NumericCulture` throws `ArgumentNullException`.
+Options are validated even when an entry is absent.
+
+All these reads are side-effect-free, including with automatic creation/saving
+enabled. They never create dictionaries/entries, replace text, or save files.
+Policies apply only to these new dictionary accessors. Application schemas, domain
+ranges, table columns and cross-reference validation remain the caller's responsibility.
+
 Text blocks are accessed independently from sections and lists:
 
 ```csharp

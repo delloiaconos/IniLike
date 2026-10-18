@@ -83,6 +83,7 @@
   <ItemGroup>
     <Compile Include="ConfigurationFile.cs" />
     <Compile Include="ConfigurationLoadOptions.cs" />
+    <Compile Include="DictionaryConversionOptions.cs" />
     <Compile Include="NullParameterValueException.cs" />
     <Compile Include="ConfigurationFile.Parsing.cs" />
     <Compile Include="ConfigurationFile.Persistence.cs" />

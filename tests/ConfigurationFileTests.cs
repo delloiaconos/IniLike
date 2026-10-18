@@ -1272,6 +1272,106 @@ class ConfigurationFileTests
         }
     }
 
+    static void typedDictionaryValues()
+    {
+        ConfigurationFile Config = load("[DICT:D]\ninteger=2147483647\nlong=9223372036854775807\ndecimal=1,25\ninvalid=oops\nempty=\nbool=TrUe\n[S]\ninteger=7\n");
+        string Original = File.ReadAllText("config.ini");
+        Config.autoUpdateRegistry = true;
+        Config.autoSaveRegistry = true;
+        Dictionary<string, string> Entries = Config.getDictionary("D");
+        Entries["null"] = null;
+        Entries["overflow"] = "9223372036854775808";
+        Entries["floatOverflow"] = "3.5e38";
+        Entries["doubleOverflow"] = "1e9999";
+        Entries["nan"] = "NaN";
+        Entries["infinity"] = "Infinity";
+        Entries["negativeInfinity"] = "-Infinity";
+        Entries["grouped"] = "1,234.5";
+        int Before = Entries.Count;
+        DictionaryValueStatus Status;
+        int Integer = 99;
+        long Long;
+        double Double;
+        float Float;
+        bool Boolean;
+        string Raw;
+        equal(true, Config.tryGetDictionaryValue("D", "integer", out Integer)); equal(int.MaxValue, Integer);
+        equal(true, Config.tryGetDictionaryValue("D", "long", out Long)); equal(long.MaxValue, Long);
+        equal(true, Config.tryGetDictionaryValue("D", "decimal", out Double)); equal(1.25, Double);
+        equal(true, Config.tryGetDictionaryValue("D", "decimal", out Float)); equal(1.25f, Float);
+        equal(true, Config.tryGetDictionaryValue("D", "bool", out Boolean)); equal(true, Boolean);
+        foreach (string Name in new string[] { "invalid", "empty", "null", "overflow", "missing" }) {
+            equal(false, Config.tryGetDictionaryValue("D", Name, null, out Integer, out Status));
+            equal(0, Integer);
+            equal(Name == "null" ? DictionaryValueStatus.NullValue : Name == "missing" ? DictionaryValueStatus.MissingKey : DictionaryValueStatus.InvalidValue, Status);
+        }
+        equal(false, Config.tryGetDictionaryValue("missing", "integer", null, out Long, out Status));
+        equal(DictionaryValueStatus.MissingDictionary, Status); equal(0L, Long);
+        equal(true, Config.containsDictionaryValue("D", "null"));
+        equal(true, Config.tryGetDictionaryValue("D", "null", out Raw)); equal(null, Raw);
+        equal(false, Config.tryGetDictionaryValue("D", "missing", out Raw)); equal(null, Raw);
+        DictionaryConversionOptions Options = new DictionaryConversionOptions();
+        foreach (string Culture in new string[] { "en-US", "it-IT", "fr-FR" }) {
+            Options.NumericCulture = new System.Globalization.CultureInfo(Culture);
+            Options.DecimalSeparator = DecimalSeparatorPolicy.Culture;
+            string Separator = Options.NumericCulture.NumberFormat.NumberDecimalSeparator;
+            Entries["culture"] = " -1" + Separator + "5e2 ";
+            equal(true, Config.tryGetDictionaryValue("D", "culture", Options, out Double, out Status));
+            equal(DictionaryValueStatus.Success, Status); equal(-150.0, Double);
+            equal(false, Config.tryGetDictionaryValue("D", "grouped", Options, out Double)); equal(0.0, Double);
+        }
+        Options.DecimalSeparator = DecimalSeparatorPolicy.Dot;
+        equal(false, Config.tryGetDictionaryValue("D", "decimal", Options, out Double));
+        Options.DecimalSeparator = DecimalSeparatorPolicy.Comma;
+        equal(true, Config.tryGetDictionaryValue("D", "decimal", Options, out Double));
+        Entries["dot"] = "1.25";
+        equal(false, Config.tryGetDictionaryValue("D", "dot", Options, out Double));
+        Options.DecimalSeparator = DecimalSeparatorPolicy.DotOrComma;
+        equal(true, Config.tryGetDictionaryValue("D", "dot", Options, out Double));
+        Options.NumericCulture = System.Globalization.CultureInfo.InvariantCulture;
+        foreach (string Name in new string[] { "nan", "infinity", "negativeInfinity", "doubleOverflow", "grouped" }) {
+            equal(false, Config.tryGetDictionaryValue("D", Name, Options, out Double, out Status));
+            equal(DictionaryValueStatus.InvalidValue, Status); equal(0.0, Double);
+        }
+        Options.AllowNonFinite = true;
+        equal(true, Config.tryGetDictionaryValue("D", "nan", Options, out Double)); equal(true, System.Double.IsNaN(Double));
+        equal(true, Config.tryGetDictionaryValue("D", "infinity", Options, out Float)); equal(true, Single.IsPositiveInfinity(Float));
+        equal(true, Config.tryGetDictionaryValue("D", "negativeInfinity", Options, out Double)); equal(true, System.Double.IsNegativeInfinity(Double));
+        equal(false, Config.tryGetDictionaryValue("D", "doubleOverflow", Options, out Double)); equal(0.0, Double);
+        equal(false, Config.tryGetDictionaryValue("D", "floatOverflow", Options, out Float)); equal(0f, Float);
+        string[] TrueValues = { "true", "1", "YES", "On" };
+        string[] FalseValues = { "FALSE", "0", "No", "off" };
+        for (int Index = 0; Index < TrueValues.Length; Index++) {
+            Options.BooleanValues = (BooleanRepresentations)(1 << Index);
+            for (int Candidate = 0; Candidate < TrueValues.Length; Candidate++) {
+                Entries["booleanTest"] = " " + TrueValues[Candidate] + " ";
+                equal(Index == Candidate, Config.tryGetDictionaryValue("D", "booleanTest", Options, out Boolean));
+                equal(Index == Candidate, Boolean);
+                Entries["booleanTest"] = FalseValues[Candidate];
+                equal(Index == Candidate, Config.tryGetDictionaryValue("D", "booleanTest", Options, out Boolean)); equal(false, Boolean);
+            }
+        }
+        Options.BooleanValues = BooleanRepresentations.None;
+        equal(false, Config.tryGetDictionaryValue("D", "bool", Options, out Boolean));
+        Options.NumericCulture = null;
+        throws<ArgumentNullException>(delegate { Config.tryGetDictionaryValue("D", "integer", Options, out Integer); });
+        throws<ArgumentNullException>(delegate { Config.tryGetDictionaryValue(null, "integer", out Integer); });
+        throws<ArgumentNullException>(delegate { Config.containsDictionaryValue("D", null); });
+        Options.NumericCulture = System.Globalization.CultureInfo.InvariantCulture;
+        Options.DecimalSeparator = (DecimalSeparatorPolicy)999;
+        throws<ArgumentException>(delegate { Config.tryGetDictionaryValue("D", "integer", Options, out Integer); });
+        Options.DecimalSeparator = DecimalSeparatorPolicy.Culture;
+        Options.BooleanValues = (BooleanRepresentations)16;
+        throws<ArgumentException>(delegate { Config.tryGetDictionaryValue("D", "integer", Options, out Integer); });
+        equal(Before + 3, Entries.Count);
+        equal(1, Config.listDictionaries().Count);
+        equal(Original, File.ReadAllText("config.ini"));
+        equal(7, Config.getParameter("S", "integer", 0));
+        ConfigurationFile Insensitive = new ConfigurationFile("config.ini", false);
+        equal(true, Insensitive.tryGetDictionaryValue("d", "INTEGER", out Integer));
+        equal(false, Config.tryGetDictionaryValue("d", "integer", out Integer));
+    }
+
     static void includeResolution()
     {
         Directory.CreateDirectory("bundle/nested");
@@ -1737,6 +1837,7 @@ class ConfigurationFileTests
         test("trailing punctuation is literal in sections, dictionaries, tables and lists", literalTrailingPunctuation);
         test("name comparison is selectable and defaults to case-sensitive", nameCaseSensitivity);
         test("sections and dictionaries split at the first separator and preserve values through saving", firstSeparator);
+        test("typed dictionary reads expose status and explicit conversion policies", typedDictionaryValues);
         test("configurable include resolution and loaded dependency snapshots", includeResolution);
         test("load errors include source paths, filenames, line numbers and include chains", diagnosticContext);
         test("INCLUDE aliases load files from the current directory with isolated parser state", includeBlocks);
