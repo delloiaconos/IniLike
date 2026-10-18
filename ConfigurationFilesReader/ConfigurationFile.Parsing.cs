@@ -26,6 +26,21 @@ namespace ConfigurationFilesReader
         private readonly HashSet<string> loadingFiles = new HashSet<string>(
             Path.DirectorySeparatorChar == '\\' ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
+        private readonly HashSet<string> loadedFiles = new HashSet<string>(
+            Path.DirectorySeparatorChar == '\\' ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+
+        private string resolveInclude(string FileName, string SourcePath)
+        {
+            if (FileName.Length == 0) {
+                throw new FormatException("An INCLUDE block requires a filename.");
+            }
+            string Resolved = IncludeResolver == null ? FileName : IncludeResolver(FileName, SourcePath);
+            if (String.IsNullOrEmpty(Resolved)) {
+                throw new ArgumentException("The INCLUDE resolver must return a nonempty file path.");
+            }
+            return Path.GetFullPath(IncludeBaseDirectory == null ? Resolved : Path.Combine(IncludeBaseDirectory, Resolved));
+        }
+
         // Unrecognized identifiers remain plain section names. A null name marks an unnamed end.
         private bool tryReadBlockHeader(string Line, out BlockTypes Type, out string Name)
         {
@@ -76,7 +91,7 @@ namespace ConfigurationFilesReader
             loadIncludedFile(FilePath.FullName);
         }
 
-        // Resolve every include against the working directory, including nested ones.
+        // Load a resolved path with independent parser state.
         private void loadIncludedFile(string FileName)
         {
             if (FileName.Length == 0) {
@@ -95,6 +110,7 @@ namespace ConfigurationFilesReader
                 using (StreamReader Reader = File.OpenText(FullPath)) {
                     loadReader(Reader, FullPath);
                 }
+                loadedFiles.Add(FullPath);
             } catch (Exception Error) {
                 if (Error.Data.Contains("FilePath")) {
                     throw;
@@ -147,7 +163,7 @@ namespace ConfigurationFilesReader
                         currentParent = Type == BlockTypes.None ? "" : Name;
                         switch (reading) {
                             case BlockTypes.Include:
-                                loadIncludedFile(currentParent);
+                                loadIncludedFile(resolveInclude(currentParent, SourcePath));
                                 break;
                             case BlockTypes.Section:
                                 dictSections.Add(currentParent, new strDictionary(NameComparer));

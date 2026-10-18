@@ -1272,6 +1272,80 @@ class ConfigurationFileTests
         }
     }
 
+    static void includeResolution()
+    {
+        Directory.CreateDirectory("bundle/nested");
+        File.WriteAllText("bundle/root.ini", "[INC:nested/child.ini]\n[INC:empty.ini]\n[INC:./empty.ini]\n");
+        File.WriteAllText("bundle/nested/child.ini", "[INC:leaf.ini]\n");
+        File.WriteAllText("bundle/leaf.ini", "[S]\nk=fixed\n");
+        File.WriteAllText("bundle/nested/leaf.ini", "[S]\nk=relative\n");
+        File.WriteAllText("bundle/empty.ini", "");
+        ConfigurationLoadOptions Options = new ConfigurationLoadOptions { IncludeBaseDirectory = "bundle" };
+        ConfigurationFile Fixed = new ConfigurationFile("bundle/root.ini", Options, false);
+        equal("fixed", get(Fixed, "s", "K"));
+        List<string> Expected = new List<string>();
+        foreach (string Name in new string[] { "root.ini", "nested/child.ini", "leaf.ini", "empty.ini" }) {
+            Expected.Add(Path.GetFullPath(Path.Combine("bundle", Name)));
+        }
+        Expected.Sort(StringComparer.Ordinal);
+        equal(String.Join("|", Expected.ToArray()), String.Join("|", Fixed.listLoadedFiles().ToArray()));
+        Fixed.listLoadedFiles().Clear();
+        equal(4, Fixed.listLoadedFiles().Count);
+        Options.IncludeBaseDirectory = "absent";
+        equal(4, Fixed.listLoadedFiles().Count);
+        List<string> Sources = new List<string>();
+        Options = new ConfigurationLoadOptions {
+            IncludeResolver = delegate(string Name, string SourcePath) {
+                Sources.Add(SourcePath);
+                return Path.Combine(Path.GetDirectoryName(SourcePath), Name);
+            }
+        };
+        ConfigurationFile Relative = new ConfigurationFile(new FileInfo("bundle/root.ini"), Options);
+        equal("relative", get(Relative, "S", "k"));
+        equal(Path.GetFullPath("bundle/root.ini"), Sources[0]);
+        equal(Path.GetFullPath("bundle/nested/child.ini"), Sources[1]);
+        equal(4, Relative.listLoadedFiles().Count);
+        using (MemoryStream Source = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("[INC:empty.ini]\n"))) {
+            ConfigurationFile StreamConfig = new ConfigurationFile(Source, new ConfigurationLoadOptions {
+                IncludeBaseDirectory = "bundle",
+                IncludeResolver = delegate(string Name, string Parent) { equal(null, Parent); return Name; }
+            });
+            equal(Path.GetFullPath("bundle/empty.ini"), StreamConfig.listLoadedFiles()[0]);
+            equal(true, Source.CanRead);
+        }
+        using (FileStream Source = File.OpenRead("bundle/root.ini")) {
+            ConfigurationFile StreamConfig = new ConfigurationFile(Source, Options);
+            equal(4, StreamConfig.listLoadedFiles().Count);
+            throws<InvalidOperationException>(delegate { StreamConfig.save(); });
+        }
+        equal(0, new ConfigurationFile().listLoadedFiles().Count);
+        string Absolute = Path.GetFullPath("bundle/empty.ini");
+        File.WriteAllText("absolute.ini", "[INC:" + Absolute + "]\n");
+        equal(2, new ConfigurationFile("absolute.ini", new ConfigurationLoadOptions { IncludeBaseDirectory = "absent" }).listLoadedFiles().Count);
+        File.WriteAllText("resolver.ini", "\n[INC:alias]\n");
+        Exception Cause = new IOException("Resolver failed.");
+        Exception Failure = captureError(delegate { new ConfigurationFile("resolver.ini", new ConfigurationLoadOptions {
+            IncludeResolver = delegate(string Name, string Parent) { throw Cause; }
+        }); });
+        sourceContext(Failure, Path.GetFullPath("resolver.ini"), 2);
+        equal(true, Object.ReferenceEquals(Cause, Failure.InnerException));
+        throws<ArgumentException>(delegate { new ConfigurationFile("resolver.ini", new ConfigurationLoadOptions {
+            IncludeResolver = delegate(string Name, string Parent) { return null; }
+        }); });
+        File.WriteAllText("bundle/cycle.ini", "[INC:alias]\n");
+        throws<FormatException>(delegate { new ConfigurationFile("bundle/cycle.ini", new ConfigurationLoadOptions {
+            IncludeResolver = delegate(string Name, string Parent) { return Parent; }
+        }); });
+        using (FileStream Source = File.OpenRead("bundle/cycle.ini")) {
+            throws<FormatException>(delegate { new ConfigurationFile(Source, new ConfigurationLoadOptions {
+                IncludeResolver = delegate(string Name, string Parent) { return Parent; }
+            }); });
+        }
+        Relative.save("flattened.ini");
+        equal(4, Relative.listLoadedFiles().Count);
+        equal(1, new ConfigurationFile("flattened.ini").listLoadedFiles().Count);
+    }
+
     static Exception captureError(Action Action)
     {
         try { Action(); }
@@ -1663,6 +1737,7 @@ class ConfigurationFileTests
         test("trailing punctuation is literal in sections, dictionaries, tables and lists", literalTrailingPunctuation);
         test("name comparison is selectable and defaults to case-sensitive", nameCaseSensitivity);
         test("sections and dictionaries split at the first separator and preserve values through saving", firstSeparator);
+        test("configurable include resolution and loaded dependency snapshots", includeResolution);
         test("load errors include source paths, filenames, line numbers and include chains", diagnosticContext);
         test("INCLUDE aliases load files from the current directory with isolated parser state", includeBlocks);
         test("getEncoded flag selects raw bytes or independent Base64 ASCII bytes", encodedFlag);

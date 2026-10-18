@@ -87,7 +87,7 @@ second; 20; inactive
   header transitions and optional `END` markers as lists.
 - `[INCLUDE:filename.ini]` loads another configuration file into the current
   registry. `INC`, `INPUT`, `LINK` and `LOAD` are equivalent identifiers. Absolute
-  paths are accepted; relative paths (including nested includes) resolve from the
+  paths are accepted; by default, relative paths (including nested includes) resolve from the
   process's current working directory, not the including file's directory.
   Filenames are trimmed but are not quoted or stripped of punctuation.
   Included files use the same parser settings and have independent block state;
@@ -249,6 +249,59 @@ Run the application from the directory against which these paths should resolve.
 Includes also work when constructing from a stream. Loaded content is available
 through the existing getters and listing methods; there is no separate include
 registry. Full paths can be used when the working directory is not fixed.
+
+Pass `ConfigurationLoadOptions` after the source argument to select an INCLUDE
+policy before loading. String paths, `FileInfo` and streams accept these options,
+with an optional final `bool CaseSensitive`. Null options retain the defaults.
+The root filename itself is resolved normally, independently of INCLUDE options.
+
+```csharp
+var options = new ConfigurationLoadOptions {
+    IncludeBaseDirectory = @"/application/config"
+};
+var config = new ConfigurationFile("root.ini", options);
+List<string> files = config.listLoadedFiles();
+```
+
+`IncludeBaseDirectory` is normalized to an absolute path when construction starts.
+All relative includes, including nested ones, resolve against that same directory;
+absolute includes remain absolute. Options are copied before loading. Without an
+explicit base directory, relative paths retain the legacy working-directory behavior.
+The existing `DirectoryInfo` constructor's base directory still applies only to the
+root filename.
+
+For custom mapping, set `IncludeResolver` to a
+`Func<string, string, string>`. Its arguments are the trimmed INCLUDE filename and
+the including file's absolute path (null for an anonymous stream). It returns a
+nonempty file path. Relative results resolve against `IncludeBaseDirectory` when
+provided, otherwise the working directory. The resolver runs for every directive,
+including absolute filenames and nested includes. For paths relative to each
+including file, for example:
+
+```csharp
+var options = new ConfigurationLoadOptions {
+    IncludeResolver = (name, source) => System.IO.Path.Combine(
+        source == null ? @"/application/config" : System.IO.Path.GetDirectoryName(source), name)
+};
+var config = new ConfigurationFile("root.ini", options);
+```
+
+An empty directive still throws `FormatException`; a null/empty resolver result
+throws `ArgumentException`. Resolver exceptions retain their cause and the directive's
+source/line diagnostics. Resolved paths use the existing duplicate, cycle and depth
+checks; a resolver changes file selection, not parser rules or stream ownership.
+
+`listLoadedFiles()` returns a sorted, independent `List<string>` snapshot of unique
+absolute paths successfully parsed by this instance. It includes the root file for
+path and `FileStream` sources, plus all transitive includes, including empty files.
+Anonymous streams contribute only included files; empty in-memory configurations
+return an empty list. Repeated paths are deduplicated using ordinal comparison
+(case-insensitive on Windows), independently of `CaseSensitive`. Paths are normalized
+lexically; symbolic links are not resolved to filesystem identities. Repeated includes
+are still parsed and can cause duplicate-block errors. Construction failures throw
+instead of exposing a partial configuration or dependency list. Save/dump does not
+change this snapshot's source set or add output/validation temporary files. A saved,
+flattened configuration loaded afresh tracks only its own input files.
 
 Dump/save writes the combined data as ordinary blocks, replacing include directives
 with their loaded content. It never writes back to the included files automatically.
