@@ -4,28 +4,11 @@ IniLike is a standalone C# library for reading INI-like configuration files orga
 It targets .NET Framework 3.5. 
 The namespace and assembly name are **ConfigurationFilesReader**, and the public class is `ConfigurationFilesReader.ConfigurationFile`.
 
-The implementation uses one partial class across eleven source files in
-`ConfigurationFilesReader/`: `ConfigurationFile.cs` holds shared settings and
-constructors; `ConfigurationFile.Parsing.cs` handles block identification and loading;
-`ConfigurationFile.Persistence.cs` handles dump/save and round-trip validation.
-`ConfigurationFile.Sections.cs`, `ConfigurationFile.Tables.cs`,
-`ConfigurationFile.Dictionaries.cs`, `ConfigurationFile.Lists.cs`,
-`ConfigurationFile.Texts.cs` and `ConfigurationFile.Encoded.cs` hold the
-respective storage and access methods, including parameter methods in Sections.
-`ConfigurationFile.ReadOnly.cs` supplies collection views and snapshot creation;
-`ConfigurationSnapshot.cs` and `ReadOnlyStringDictionary.cs` define the immutable
-read API and the .NET 3.5 dictionary wrapper.
-`ConfigurationFile.Sources.cs` stores provenance and provides source-location lookups.
-
-The parser represents block kinds with the private `BlockTypes` enum and maps
-those kinds to their identifiers and aliases in the private readonly
-`blockIdentifiers` dictionary. The include kind is `BlockTypes.Include`, following
-the same capitalization as `Section`, `Table`, `List`, `Dictionary`, `Text` and
-`Encoded`. File identifiers remain uppercase (`INCLUDE`, `INC`, `INPUT`, `LINK`,
-`LOAD`); `BlockTypes.None` represents the state outside a block and is associated
-with the `END` marker.
-
-Documentation: [validator usage](ConfigurationValidator/README.md).
+Start with [Usage](#usage), then use the references for [loading and includes](#including-other-files),
+[source locations](#source-locations-for-parsed-elements), [collection access](#api-reference),
+[typed dictionary values](#typed-dictionary-values), [read-only views and snapshots](#read-only-views-and-immutable-snapshots),
+and [saving](#saving). Build and test instructions are [below](#build).
+Console usage is in the [ConfigurationValidator guide](ConfigurationValidator/README.md).
 
 ## File format
 
@@ -57,8 +40,7 @@ second; 20; inactive
   Blank or whitespace-only rows and rows starting with a `parComment` prefix
   after trimming are intentionally ignored, so they do not occupy table rows.
   A bracketed row is interpreted as a block header and ends the current table;
-  literal bracketed rows cannot currently be escaped. Support for those rows is
-  deferred to a future release.
+  literal bracketed rows cannot be escaped.
 - `[LIST:NAME]` and `[LST:NAME]` are equivalent list headers. Every data line is
   one string item: `mach1;` remains `mach1;`, and `x1=mach1.volt1` remains the
   complete string `x1=mach1.volt1`. Items are not parsed as key/value pairs;
@@ -116,7 +98,7 @@ second; 20; inactive
   canonical Base64 data line without delimiters or an end marker.
 - Block names and section/dictionary keys are **case-sensitive by default**.
   Pass `false` for the constructor's `CaseSensitive` argument to ignore case. The `SEC:`, `SECTION:`,
-  `TABLE:`, `TBL:`, `LIST:`, `LST:`, `DICT:`, `DICTIONARY:`, `TEXT:`, `TXT:`, `ENCODED:`, `ENC:`, `BASE64:`, `B64:`, `INCLUDE:`, `INC:`, `INPUT:`, `LINK:`, `LOAD:` and `END` keywords
+  `TABLE:`, `TBL:`, `TAB:`, `LIST:`, `LST:`, `DICT:`, `DICTIONARY:`, `TEXT:`, `TXT:`, `ENCODED:`, `ENC:`, `BASE64:`, `B64:`, `INCLUDE:`, `INC:`, `INPUT:`, `LINK:`, `LOAD:` and `END` keywords
   must be uppercase. Sections, tables, lists, dictionaries, text and encoded blocks have separate name spaces and may
   share a name.
 - Comments use the nonempty prefixes in `parComment` (default `##`), matched
@@ -145,10 +127,8 @@ second; 20; inactive
   Paths stored as values are returned as text without resolution.
 
 Punctuation is preserved: `value...` remains `value...`, and a single `.` remains `.`.
-Files that previously used a trailing semicolon as a terminator must remove it if
-it is not intended as part of the value. For example, write `port = 8080` and
-`enabled = TRUE`; `8080;` and `TRUE;` are now literal strings and do not parse as
-that number or boolean. Whitespace trimming and typed conversion rules are unchanged.
+For numeric and boolean values, write `port = 8080` and `enabled = TRUE`;
+`8080;` and `TRUE;` are literal strings rather than valid numeric/boolean inputs.
 The parser supports the format described here rather than a complete INI specification.
 
 ## Usage
@@ -249,7 +229,7 @@ default to false. The same parser and file-format rules apply to files and strea
 [END:settings/common.ini]
 ```
 
-Run the application from the directory against which these paths should resolve.
+By default, these paths resolve against the process's working directory.
 Includes also work when constructing from a stream. Loaded content is available
 through the existing getters and listing methods; there is no separate include
 registry. Full paths can be used when the working directory is not fixed.
@@ -422,149 +402,86 @@ checks without a source file do not have a file location.
 
 ## API reference
 
-The diagram shows the public API of the partial `ConfigurationFile` class and
-its null-value exception.
-Members are ordered by shared settings and constructors, sections/parameters,
-tables, dictionaries, lists, and persistence. Parsing remains private.
-`strDictionary` in the diagram denotes `Dictionary<string, string>`.
+### Constructors and settings
 
-```mermaid
-classDiagram
-    class ConfigurationFile {
-        %% Shared settings and constructors
-        +string[] parComment
-        +char[] parSeparator
-        +bool autoUpdateRegistry
-        +bool autoSaveRegistry
-        +bool CaseSensitive
-        +ConfigurationFile()
-        +ConfigurationFile(bool CaseSensitive)
-        +ConfigurationFile(string FileName)
-        +ConfigurationFile(string FileName, bool CaseSensitive)
-        +ConfigurationFile(FileInfo FilePath)
-        +ConfigurationFile(FileInfo FilePath, bool CaseSensitive)
-        +ConfigurationFile(Stream Source)
-        +ConfigurationFile(Stream Source, bool CaseSensitive)
-        +ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)
-        +ConfigurationFile(DirectoryInfo BaseDirectory, string FileName, bool CaseSensitive)
-        %% Sections and parameters
-        +containsSection(string Name) bool
-        +tryGetSection(string Name, out strDictionary Parameters) bool
-        +containsParameter(string Section, string Parameter) bool
-        +tryGetParameter(string Section, string Parameter, out string Value) bool
-        +tryGetParameter(string Section, string Parameter, out bool Value) bool
-        +tryGetParameter(string Section, string Parameter, out int Value) bool
-        +tryGetParameter(string Section, string Parameter, out long Value) bool
-        +tryGetParameter(string Section, string Parameter, out float Value) bool
-        +tryGetParameter(string Section, string Parameter, out double Value) bool
-        +checkSection(string SecName) bool
-        +listSections() List~string~
-        +listParameters() List~string~
-        +listParameters(string SecName) List~string~
-        +setParameter(string SecName, string ParName, string value) void
-        +addParameter(string SecName, string ParName, string DefaultVal) void
-        +getParameter(string SecName, string ParName, string DefaultVal) string
-        +getParameter(string SecName, string ParName, bool DefaultVal) bool
-        +getParameter(string SecName, string ParName, double DefaultVal) double
-        +getParameter(string SecName, string ParName, float DefaultVal) float
-        +getParameter(string SecName, string ParName, long DefaultVal) long
-        +getParameter(string SecName, string ParName, int DefaultVal) int
-        %% Tables
-        +containsTable(string Name) bool
-        +tryGetTable(string Name, out List~string~ Rows) bool
-        +listTables() List~string~
-        +getTable(string tablename) List~string~
-        %% Dictionaries
-        +containsDictionary(string Name) bool
-        +tryGetDictionary(string Name, out strDictionary Entries) bool
-        +listDictionaries() List~string~
-        +getDictionary(string DictionaryName) strDictionary
-        %% Lists
-        +containsList(string Name) bool
-        +tryGetList(string Name, out List~string~ Items) bool
-        +listLists() List~string~
-        +getList(string ListName) List~string~
-        %% Text blocks
-        +containsText(string Name) bool
-        +tryGetText(string Name, out string Text) bool
-        +listTexts() List~string~
-        +getText(string TextName) string
-        %% Encoded blocks
-        +containsEncoded(string Name) bool
-        +tryGetEncoded(string Name, out byte[] Data) bool
-        +listEncoded() List~string~
-        +tryGetEncoded(string Name, bool Encoded, out byte[] Data) bool
-        +getEncoded(string BlockName) byte[]
-        +getEncoded(string BlockName, bool encoded) byte[]
-        %% Persistence
-        +dump() StreamWriter
-        +dump(StreamWriter Writer) void
-        +save() void
-        +save(string FileName) void
-        +save(FileInfo Path, string FileName) void
-        +save(FileInfo File) void
-    }
-    class NullParameterValueException {
-        +string SectionName
-        +string ParameterName
-        +NullParameterValueException(string SectionName, string ParameterName)
-    }
-    InvalidOperationException <|-- NullParameterValueException
-    ConfigurationFile ..> NullParameterValueException : throws on typed null reads without defaults
-    note for NullParameterValueException "SectionName and ParameterName are read-only."
-    note for ConfigurationFile "Namespace: ConfigurationFilesReader. Both array fields are readonly. autoUpdateRegistry and autoSaveRegistry have get/set access and default to false. CaseSensitive is read-only and defaults to true."
-```
+All constructors load immediately except the empty-container forms. Every form
+accepts an optional final `bool CaseSensitive`; the default is true. See
+[Usage](#usage) for matching and stream-ownership rules.
 
-File paths are stored internally as `System.IO.FileInfo`. 
-Typed paths can be passed directly or combined with a filename:
+| Constructor | Source and destination |
+| --- | --- |
+| `ConfigurationFile()` / `ConfigurationFile(bool CaseSensitive)` | Empty container without an original save destination. |
+| `ConfigurationFile(string FileName)` | File path relative to the working directory, or an absolute path. |
+| `ConfigurationFile(FileInfo FilePath)` | File represented by the typed path. |
+| `ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)` | Directory and filename combined with `Path.Combine`; an absolute filename overrides the base. |
+| `ConfigurationFile(Stream Source)` | Reads from the current position; no original save destination, even for a `FileStream`. |
+| `ConfigurationFile(Source, ConfigurationLoadOptions Options[, bool CaseSensitive])` | Selects [INCLUDE resolution](#including-other-files) and a [stream source name](#source-locations-for-parsed-elements) before loading. Null options select defaults. |
+
+In the options form, `Source` is a string path, `FileInfo`, or `Stream`.
+Relative paths are resolved when their path objects are created. Constructor
+argument checks, [loading exceptions](#loading-diagnostics), and
+[automatic-save destination rules](#saving) apply to these forms.
+
+| Setting | Behavior |
+| --- | --- |
+| `CaseSensitive` | Read-only name-matching mode chosen by the constructor. |
+| `autoUpdateRegistry` | Get/set, false by default. Enables creation of missing section parameters; see [Saving](#saving). |
+| `autoSaveRegistry` | Get/set, false by default. Saves newly created parameters to the original file; see [Saving](#saving). |
+| `parComment`, `parSeparator` | Public readonly arrays with mutable elements; see [Parser settings and automatic updates](#parser-settings-and-automatic-updates). |
+
+### Stored block access
+
+These getters never create blocks or save files. Null names throw
+`ArgumentNullException`. Sections and dictionaries are separate: parameter APIs
+operate only on sections.
+
+| Getter | Existing block | Missing block |
+| --- | --- | --- |
+| `getTable(Name)` | Live mutable `List<string>` of rows, including for an empty table. | Unattached empty list. |
+| `getList(Name)` | Live mutable `List<string>` of items. | Unattached empty list. |
+| `getDictionary(Name)` | Live mutable `Dictionary<string,string>`. | Unattached empty dictionary. |
+| `getText(Name)` | String with raw lines joined by LF, without an added final newline. | Empty string. |
+| `getEncoded(Name)` | Independent decoded byte-array copy. | Empty array. |
+| `getEncoded(Name, bool encoded)` | Decoded bytes when false; canonical Base64 ASCII bytes when true. Always a copy. | Empty array. |
+
+Editing a live collection changes memory only and requires explicit `save()`.
+Editing an unattached collection or byte-array copy does not change the registry.
+For protected access, use [read-only views and snapshots](#read-only-views-and-immutable-snapshots).
+
+`listSections`, `listTables`, `listLists`, `listDictionaries`, `listTexts` and
+`listEncoded` return independent `List<string>` name snapshots sorted with
+`StringComparer.Ordinal`. `listParameters(Section)` lists names in one section;
+missing/empty sections return an empty list and null throws `ArgumentNullException`.
+`listParameters()` returns distinct names across sections, deduplicated using the
+selected case mode and sorted ordinally. Changing a name list never changes the
+configuration. Dependency paths have their own [loaded-file list](#including-other-files).
 
 ```csharp
-var fromString = new ConfigurationFile("config.ini");
-var fromPath = new ConfigurationFile(new System.IO.FileInfo("config.ini"));
-var fromDirectory = new ConfigurationFile(
-    new System.IO.DirectoryInfo("settings"), "config.ini");
+Dictionary<string, string> channels = config.getDictionary("CHANNELS");
+channels["key1"] = "updated";
+string notes = config.getText("NOTES");
+byte[] payload = config.getEncoded("PAYLOAD");
+string base64 = System.Text.Encoding.ASCII.GetString(config.getEncoded("PAYLOAD", true));
+config.save();
 ```
 
-Relative paths are resolved against the working directory when their path objects are created. 
+### Parameter values and defaults
 
-| Member | Behavior |
+`getParameter(Section, Parameter, DefaultVal)` returns stored text or converts it
+to the type of the supplied default. Missing entries return the default; storing
+missing defaults is controlled by [automatic updates](#saving).
+
+| Default type | Stored-value conversion |
 | --- | --- |
-| `CaseSensitive` | Read-only property, true by default. Every constructor has an overload with this final bool argument; false selects ordinal case-insensitive names and keys. |
-| `autoUpdateRegistry` | Public get/set property, false by default. Enables creation of missing section parameters by parameter methods. |
-| `autoSaveRegistry` | Public get/set property, false by default. Saves the entire registry to its original file when a new parameter or section is created. Requires `autoUpdateRegistry=true` for creation through parameter methods. |
-| `ConfigurationFile(string filename)` | Loads the file immediately. Missing files and parsing errors cause exceptions. |
-| `ConfigurationFile(FileInfo FilePath)` | Loads the file represented by the typed path immediately. |
-| `ConfigurationFile(Stream Source)` | Loads from the current stream position, leaves it open, and has no original save destination. |
-| `ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)` | Combines the directory and filename and loads the resulting file immediately. |
-| `ConfigurationFile()` | Creates an empty container without loading a file; automatic creation is disabled. |
-| `checkSection(string)` | Checks for a section block, excluding all other block types. Never creates sections or writes files. |
-| `getParameter(section, key, string defaultValue)` | Returns the stored text, or the default if the section or key is missing. With `autoUpdateRegistry=true`, stores that missing default, creating the section if needed; also saves it when `autoSaveRegistry=true`. |
-| `getParameter(..., bool)` | `TRUE` (case-insensitive) and `1` are true; `FALSE` and `0` are false. Surrounding whitespace is ignored. Other stored values remain false, even when the default is true. |
-| `getParameter(..., double/float)` | Parses using invariant culture after replacing commas with periods. Returns the default if parsing fails. |
-| `getParameter(..., long/int)` | Parses an integer using invariant culture. Returns the default if parsing fails. The int overload parses as long and then performs an unchecked cast, so values outside the int range can wrap instead of returning the default. |
-| `getTable(name)` | Returns the live `List<string>` of rows for an existing table, including an empty one. Missing tables return a new, unattached empty list. Null throws `ArgumentNullException`. Direct edits change memory only; call `save()` to persist them. |
-| `getList(string ListName)` | Returns the mutable internal list of string items. A missing list returns a new, unattached empty list. Null throws `ArgumentNullException`. Never creates a list or triggers saving. |
-| `listLists()` | Returns an independent, ordinally sorted snapshot of list block names, excluding all other block types. |
-| `getDictionary(string DictionaryName)` | Returns the live `Dictionary<string, string>`. Missing names return an unattached empty dictionary; null throws `ArgumentNullException`. Does not create a registered dictionary. |
-| `listDictionaries()` | Returns an independent, ordinally sorted snapshot of dictionary names. |
-| `getText(string TextName)` | Returns raw text lines joined with LF, or an empty string for a missing block. Null throws `ArgumentNullException`. Does not create entries or save. |
-| `listTexts()` | Returns an independent, ordinally sorted snapshot of text block names. |
-| `getEncoded(string BlockName)` | Returns an independent decoded `byte[]`, or an empty array for a missing block. Null throws `ArgumentNullException`. Does not create entries or save. |
-| `getEncoded(string BlockName, bool encoded)` | With `false`, returns decoded bytes as above. With `true`, returns canonical Base64 as ASCII bytes in an independent `byte[]`, without line wrapping or comments. Empty/missing blocks return an empty array; null throws `ArgumentNullException`. Does not create entries or save. |
-| `listEncoded()` | Returns an independent, ordinally sorted snapshot of encoded block names. |
-| `listSections()` | Returns section block names, excluding all other block types. |
-| `listParameters(string Section)` | Returns parameter names in the specified section. Missing or empty sections return an empty list; null throws `ArgumentNullException`. |
-| `listParameters()` | Returns distinct parameter names across all sections. Names are deduplicated using the selected case mode and sorted ordinally. |
-| `listTables()` | Returns table block names, excluding all other block types. |
-| `dump()` | Returns a flushed UTF-8 `StreamWriter` backed by a memory stream, positioned at zero for reading. The caller must dispose it. |
-| `dump(StreamWriter Writer)` | Writes and flushes the registry at the supplied writer's current position without closing it. Null throws `ArgumentNullException`. |
-| `save()` | Saves to the original file. Throws `InvalidOperationException` if constructed without a file. |
-| `save(string FileName)` | Saves to the specified path, relative to the current working directory if not rooted. |
-| `save(FileInfo Path, string FileName)` | Treats `Path.FullName` as a base directory and combines it with `FileName` using `System.IO.Path.Combine`. A rooted filename overrides the base directory. |
-| `save(FileInfo File)` | Saves to the file represented by `File`. |
-| `setParameter(string sectionName, string parameterName, string value)` | Replaces an existing value; creates missing sections and keys only when `autoUpdateRegistry=true`. Otherwise missing entries are left unchanged. Stores text without parsing or trimming and preserves original name spelling and uses the selected case mode. Newly created entries are saved when `autoSaveRegistry=true`. |
-| `addParameter(section, key, defaultValue)` | When `autoUpdateRegistry=true`, adds a missing parameter in memory and creates its section if needed; otherwise makes no changes. Preserves existing values, including null. Stores text unchanged; new entries are saved when `autoSaveRegistry=true`. Null section/key names throw `ArgumentNullException`; empty names are allowed. |
+| `string` | Returns stored text unchanged, including null. |
+| `bool` | Trimmed `TRUE` (case-insensitive) and `1` are true. Every other non-null value is false, even with a true default. |
+| `double` / `float` | Invariant-culture parsing after replacing commas with periods; parsing failures return the default. The float overload casts from double and can overflow. |
+| `long` / `int` | Invariant-culture integer parsing; parsing failures return the default. The int overload casts from long and can wrap outside the int range. |
 
+Typed default getters return the supplied default for stored nulls without
+mutation or saving. These legacy conversions remain distinct from the stricter
+[typed parameter try-reads](#presence-and-explicit-read-results) and configurable
+[dictionary conversions](#typed-dictionary-values).
 
 ### Presence and explicit read results
 
@@ -596,7 +513,7 @@ or empty. A missing key/section returns false and null. Typed overloads support
 `bool`, `int`, `long`, `float` and `double`; false means missing, invalid or
 out of range, and the output is reset to false/zero. An existing null value
 throws `NullParameterValueException`, with the output also reset to false/zero. Use `containsParameter` and
-the string overload to distinguish these cases. The new typed reads:
+the string overload to distinguish these cases. Typed parameter try-reads:
 
 - Accept only `TRUE`/`FALSE` (ordinal, case-insensitive) and `1`/`0` for booleans.
 - Parse integers in invariant culture and reject values outside the destination range.
@@ -604,8 +521,13 @@ the string overload to distinguish these cases. The new typed reads:
   Reject NaN, infinity and overflow, including values outside the float range.
   Ordinary floating-point rounding and underflow still apply.
 
-Typed `getParameter` overloads with a default return that default for a stored
-null. Other conversion and missing-default behavior remains unchanged.
+`NullParameterValueException` derives from `InvalidOperationException` in the
+`ConfigurationFilesReader` namespace. It is serializable; its read-only
+`SectionName` and `ParameterName` properties identify the null lookup. A stored
+null is distinct from a missing key or an empty string. Reading it never replaces
+it or saves the registry. Typed default getters handle null as described
+[above](#parameter-values-and-defaults); typed dictionary reads use their own
+[explicit status](#typed-dictionary-values).
 
 ```csharp
 List<string> rows;
@@ -623,20 +545,6 @@ if (!config.tryGetParameter("SERVER", "port", out port))
 
 Live collection edits follow the existing explicit-save rules; section snapshot
 edits do not alter the registry. Use parameter setters to update a section.
-
-Dictionary contents are accessed separately from section parameters:
-
-```csharp
-Dictionary<string, string> channels = config.getDictionary("CHANNELS");
-string x = channels["x"]; // "3", with no numeric conversion.
-channels["key1"] = "updated";
-config.save();
-```
-
-`getParameter`, `setParameter`, `addParameter`, `checkSection` and `listParameters`
-operate on sections only. Direct dictionary mutations do not trigger automatic
-creation or saving; call `save` explicitly. Dictionary names and keys are sorted
-ordinally for dump/save, and the same round-trip validation applies to their values.
 
 ### Read-only views and immutable snapshots
 
@@ -694,8 +602,9 @@ callbacks.
   the same conversions and null behavior as the configuration. Typed dictionary
   reads also support the overload taking conversion options and an output status.
 
-All snapshot collections reject edits, including through generic collection
-interfaces. Returned dictionary keys/values cannot alter snapshot storage.
+Snapshot collection wrappers reject edits, including through generic collection
+interfaces. Returned dictionary keys/values cannot alter snapshot storage; binary
+arrays are mutable copies, as described above.
 The implementation uses .NET Framework 3.5 collection interfaces and wrappers;
 no newer `IReadOnly*` interfaces or immutable-collection packages are required.
 After construction, snapshots can be shared for concurrent reads. Creating a
@@ -768,41 +677,21 @@ enabled. They never create dictionaries/entries, replace text, or save files.
 Policies apply only to these new dictionary accessors. Application schemas, domain
 ranges, table columns and cross-reference validation remain the caller's responsibility.
 
-Text blocks are accessed independently from sections and lists:
-
-```csharp
-string notes = config.getText("NOTES");
-List<string> textNames = config.listTexts();
-```
-
-The returned string is a snapshot; changing a local string does not modify the
-configuration. Neither text accessor creates entries or writes files, regardless
-of `autoUpdateRegistry` or `autoSaveRegistry`.
-
-Binary data can be retrieved directly:
-
-```ini
-[ENCODED:PAYLOAD]
-AAEC/4A=
-[END:PAYLOAD]
-```
-
-```csharp
-byte[] payload = config.getEncoded("PAYLOAD"); // 0, 1, 2, 255, 128
-byte[] base64 = config.getEncoded("PAYLOAD", true); // ASCII bytes for AAEC/4A=
-string base64Text = System.Text.Encoding.ASCII.GetString(base64);
-List<string> binaryNames = config.listEncoded();
-```
-
-The one-argument overload is equivalent to `getEncoded(name, false)`. Both overloads
-return `byte[]`; the flag selects decoded bytes or the Base64 representation.
-The returned array is an independent copy; changes to it do not modify the
-configuration. Both accessors leave the registry and files unchanged, regardless
-of automatic-update/save settings. Use `listEncoded()` to distinguish an empty
-block from a missing one. Decoded bytes are retained in memory; dump/save re-encode
-them canonically, preserving the bytes rather than the input wrapping or comments.
-
 ### Saving
+
+The two runtime properties default to false and are independent:
+
+| Operation | `autoUpdateRegistry=false` | `autoUpdateRegistry=true` |
+| --- | --- | --- |
+| `setParameter` | Updates existing parameters; skips missing entries. | Updates or creates parameters and their sections. |
+| `addParameter` | Makes no changes. | Creates missing parameters and sections; preserves existing values. |
+| `getParameter` | Reads existing values; returns missing defaults without storing them. | Reads existing values; stores missing defaults. |
+
+`setParameter(Section, Parameter, Value)` stores text unchanged and preserves
+original name spelling. `addParameter(Section, Parameter, DefaultVal)` never
+replaces an existing value, including null. Null section/key names throw
+`ArgumentNullException`; empty names and values are allowed.
+Constructor bool arguments select case sensitivity, not automatic updates or saving.
 
 To save newly created entries automatically:
 
@@ -817,7 +706,8 @@ config.addParameter("SERVER", "newKey", "value");
 `setParameter`, `addParameter`, and missing-default reads through `getParameter`
 trigger a save only when they create a parameter or section. Updating an existing
 value, adding an already existing parameter, inspecting sections, changing table
-rows, or toggling either property does not trigger a save. A triggered save writes
+rows, or toggling either property does not trigger a save. Changing either flag
+alone creates no entries. A triggered save writes
 the entire current registry, including earlier unsaved changes.
 
 Automatic saves always target the original file, even after an explicit save to
@@ -838,7 +728,8 @@ using (var reader = new System.IO.StreamReader(dump.BaseStream))
 
 The returned writer owns its memory stream. Alternatively, `dump(writer)` writes
 to a caller-owned `StreamWriter`, preserving its encoding and newline settings.
-Dumping uses the same sorted sections, parameters and ordered table rows as saving.
+A null writer throws `ArgumentNullException`. Dumping uses the same sorted
+sections, parameters and ordered table rows as saving.
 It emits raw registry content without checking whether the parser can reload it;
 `save` performs that validation before replacing the destination.
 
@@ -854,7 +745,11 @@ All overloads save the current in-memory sections, parameters, table rows, list
 items, dictionary entries, text blocks and Base64 data.
 Explicit destinations do not change the original path used by `save()`. An
 in-memory configuration always needs an explicit destination, even after its
-first save. Parent directories must already exist; null arguments are rejected.
+first save. `save(FileInfo Path, string FileName)` treats `Path.FullName` as a
+base directory and uses `Path.Combine`; a rooted filename overrides that base.
+Parent directories must already exist; null arguments are rejected. Save operations
+include all dictionaries, with names and keys sorted ordinally, and enforce the
+same round-trip validation for their values.
 
 Output uses UTF-8 without a BOM, ordinally sorted section/parameter/table names,
 and the current order of table rows and list items. Comments, source ordering and original
@@ -877,19 +772,7 @@ untouched and temporary files are cleaned up. Filesystem errors propagate;
 replacement requires filesystem support and does not fall back to truncating
 the destination. Concurrent changes to a configuration are not supported.
 
-`getTable(name)` follows the same collection behavior as `getList` and
-`getDictionary`: an existing table, even when empty, returns its live collection.
-Adding, replacing, removing or clearing rows updates the in-memory table. A missing
-table returns a new, unattached empty list; editing that list does not create a table.
-Use `listTables()` to distinguish an empty table from a missing one. Neither reads
-nor direct row mutations trigger saving, even with `autoUpdateRegistry` or
-`autoSaveRegistry` enabled. Call `save()` explicitly to persist row changes.
-
 ## Limitations
-
-The listing methods return independent `List<string>` snapshots sorted with `StringComparer.Ordinal`.
-Changing a returned list does not modify the configuration; later in-memory changes are reflected only by a new call. Listing never creates blocks or writes files.
-Parameter listings contain names, not values.
 
 ### Parser settings and automatic updates
 
@@ -899,43 +782,15 @@ immediately; changing them later does not reparse it. There is no public reload
 method or constructor option for custom prefixes or separators.
 `CaseSensitive` is selected at construction, as shown in [Usage](#usage).
 
-The two runtime properties default to false and are independent:
-
-| Operation | `autoUpdateRegistry=false` | `autoUpdateRegistry=true` |
-| --- | --- | --- |
-| `setParameter` | Updates existing parameters; skips missing entries. | Updates or creates parameters and their sections. |
-| `addParameter` | Makes no changes. | Creates missing parameters and sections; preserves existing values. |
-| `getParameter` | Reads existing values; returns missing defaults without storing them. | Reads existing values; stores missing defaults. |
-
-When `autoSaveRegistry=true`, creation by these methods saves the entire registry
-to its original file. Existing-value updates and direct collection edits do not
-trigger saving. Enabling either property does not create or save anything.
-See [Saving](#saving) for destination rules and rollback on failure.
-Constructor bool arguments select case sensitivity, not automatic updates or saving.
+Automatic creation and saving are documented together under [Saving](#saving).
 
 ### Value and format limitations
 
-Null values may be stored in memory and returned by string getters. Typed reads
-handle a stored null as follows:
-
-| Method | Result for an existing null value |
-| --- | --- |
-| `getParameter(..., bool/double/long/int/float DefaultVal)` | Returns the supplied default without changing the stored null. |
-| `tryGetParameter(..., out bool/double/long/int/float Value)` | Throws `NullParameterValueException` because no default was supplied. |
-| String getters and `containsParameter` | Preserve/report the existing null; they do not throw this exception. |
-
-`NullParameterValueException` derives from `InvalidOperationException` in the
-`ConfigurationFilesReader` namespace. Its read-only `SectionName` and
-`ParameterName` identify the requested lookup. It is serializable and its message
-identifies the null parameter. Null is different from an absent key or an empty
-string: typed try-reads still return false for those cases. Null names still
-throw `ArgumentNullException`.
-
-Reading a stored null never replaces it or saves the registry, even when both
-automatic flags are true. `save` continues to reject stored null values.
-Empty names and empty string values remain allowed.
-Integer casts can wrap and float casts can overflow; the numeric getters retain
-these legacy conversions rather than guaranteeing range-safe results.
+Null values, empty names and empty strings can be stored in memory. See
+[Parameter values and defaults](#parameter-values-and-defaults),
+[explicit parameter reads](#presence-and-explicit-read-results), and
+[typed dictionary values](#typed-dictionary-values) for conversion and null rules.
+Save rejects data that cannot round-trip, including nulls; see [Saving](#saving).
 
 The parser is permissive: lines outside blocks and section/dictionary lines without
 `=` are ignored. Unknown bracketed identifiers become plain section names;
@@ -956,92 +811,83 @@ usage examples, command-line options, exit codes and example validation.
 
 ## Build
 
-With GNU Make and MSBuild installed, build from the repository root:
+Run commands from the repository root. Building requires a toolchain with .NET
+Framework 3.5 reference assemblies and compatible targets. GNU Make drives the
+repository targets; tests additionally require Python 3 and Mono (`mcs` and `mono`
+on `PATH`). No Python packages or test frameworks are required.
+
+| Command | Purpose |
+| --- | --- |
+| `make` / `make ms-build` | Build `IniLike.sln` with MSBuild (default target). |
+| `make x-build` | Build explicitly with deprecated xbuild. |
+| `make test` | Build temporarily and run library and console regression tests. |
+| `make test-examples` | Validate all examples; see the [validator guide](ConfigurationValidator/README.md#validate-all-examples). |
+| `make clean` | Delete both projects' entire `bin` and `obj` directories, including all configurations. |
+
+Build and test default to Release. Use `CONFIGURATION=Debug` to select Debug.
+`MSBUILD=/path/to/msbuild` and `XBUILD=/path/to/xbuild` select executables; these
+must be paths, not commands with arguments. `PYTHON=/path/to/python3` selects the
+test interpreter. For example:
 
 ```sh
-make ms-build
+make ms-build MSBUILD=/path/to/msbuild
+make test CONFIGURATION=Debug PYTHON=python3
 ```
 
-- `ms-build` is the default target: running `make` alone invokes MSBuild.
-- `x-build` explicitly uses the deprecated Mono xbuild tool: `make x-build`.
-- `clean` removes both projects' entire `bin` and `obj` directories, including Debug, Release, and stale build artifacts: `make clean`.
-- `test` builds the solution temporarily and runs library and console checks.
-- `test-examples` builds temporarily and validates every `examples/*.ini` file; see the
-  [validator guide](ConfigurationValidator/README.md#validate-all-examples).
-  Build and test default to Release; select Debug with `CONFIGURATION=Debug`, for example `make test CONFIGURATION=Debug`. 
-  Tests also require Python 3; override its command with `PYTHON=python3` if needed.
-- `IniLike.sln` contains the library and console validator projects.
-  Build it with a toolchain that supports .NET Framework 3.5. 
-  MSBuild must have access to the .NET Framework 3.5 reference assemblies and compatible build targets:
+`make test` and `make test-examples` prefer MSBuild and fall back to xbuild only
+when MSBuild is unavailable. An explicit `MSBUILD` override disables fallback.
+A missing explicitly selected executable or an actual build failure is an error.
+`XBUILD` selects the fallback executable. The explicit build targets never switch tools, and the test
+runner selects its tool independently of a previous build target.
+
+To build without Make:
 
 ```sh
 msbuild IniLike.sln /p:Configuration=Release
 ```
 
-The resulting assembly is
-`ConfigurationFilesReader/bin/Release/ConfigurationFilesReader.dll`.
-
-Select build executables with `make ms-build MSBUILD=/path/to/msbuild` or
-`make x-build XBUILD=/path/to/xbuild`. These variables accept executable paths,
-not commands with arguments. Both build targets support `CONFIGURATION=Debug`.
+The solution contains the library and console validator projects. The resulting
+library is `ConfigurationFilesReader/bin/Release/ConfigurationFilesReader.dll`.
+For console invocation and output files, see the
+[validator guide](ConfigurationValidator/README.md#build-and-basic-usage).
 
 ## Automated tests
 
-Prerequisites: Python 3 and Mono (`mcs` and `mono` on `PATH`), plus MSBuild
-or legacy xbuild with .NET Framework 3.5 reference assemblies and compatible targets. No additional Python packages or test frameworks are required.
+For prerequisites, tool selection and Make overrides, see [Build](#build).
+`make test` builds the solution from source in a temporary directory, compiles
+`tests/ConfigurationFileTests.cs`, and runs the library and console checks. Each
+library test uses an isolated directory. Build artifacts stay outside the
+repository; the runner prints a summary and returns nonzero on failure. A separate
+build is unnecessary before testing.
 
-Run from the repository root:
+The runner can also be invoked directly:
 
 ```sh
-make test
 python3 tests/run.py
 python3 tests/run.py --configuration Debug
 python3 tests/run.py --msbuild /path/to/msbuild
 ```
 
-`make test` prefers MSBuild and falls back to xbuild when MSBuild is unavailable,
-printing which fallback is selected. xbuild still emits its deprecation warning.
-`CONFIGURATION` and `PYTHON` select the build configuration and Python interpreter.
-Use `make test MSBUILD=/path/to/msbuild` or the runner's `--msbuild` option to
-select an executable explicitly; a missing explicit executable is an error and
-does not trigger fallback. `XBUILD=/path/to/xbuild` (runner: `--xbuild`) selects
-the fallback executable. An actual build failure never triggers a retry with
-another tool. The `ms-build` and `x-build` targets retain their explicit tool selection.
+`--msbuild` disables fallback just like the Make override; `--xbuild` selects the
+fallback executable. Coverage includes all block types, parser compatibility,
+legacy and explicit conversions, automatic-save rollback, input preservation,
+INCLUDE resolution/dependencies, read-only views/snapshots, source metadata and
+named-stream diagnostics, plus console options and rewrite behavior.
 
-The runner builds the solution from source in a temporary directory and tests the resulting assembly using `tests/ConfigurationFileTests.cs`. 
-Each test runs in an isolated directory that is removed afterward. 
-Tests verify that changing `autoUpdateRegistry` does not cause file writes.
-Build artifacts are kept outside the repository. 
-The command prints a result summary and exits with a nonzero status if a build or test fails.
+## Source layout
 
-The suite covers:
-
-- Sections, tables, mutable lists, raw Unicode text blocks, Base64 binary data, and transitions between blocks.
-- Includes from files and streams, current-directory paths, duplicates, cycles, nesting limits, and flattened saves.
-- Comments, whitespace, literal trailing punctuation, Unicode, and selectable name case sensitivity.
-- Defaults for every getter overload, boolean conversion, and numeric conversion
-  under three cultures, including integer boundaries and overflow behavior.
-- Empty files, missing files, and duplicate sections, tables, and keys.
-- In-memory overrides and source file preservation.
-- Automatic creation/saving and rollback, live table/list/dictionary collections,
-  missing versus empty blocks, and independent name listings.
-- Stream ownership, BOM/encoding, line-number diagnostics, and save/dump fidelity.
-- Console options, exit codes, rewrite output and input preservation.
-
-### Optional consumer comparison
-
-```sh
-python3 tests/run.py --operator-ui /path/to/OperatorUI.exe
-```
-
-The optional assembly must exist and expose `ConfigurationFilesReader.ConfigurationFile`.
-The runner builds and executes `tests/CompatibilityProbe.cs` with Mono, comparing
-selected parsing and parameter operations through reflection. An older consumer
-may intentionally differ on first-`=` splitting, literal trailing punctuation or
-other updated rules. A mismatch requires review; it does not by itself establish
-a library regression. The probe does not test the consumer application linked
-against this DLL and is not proof of binary compatibility or Windows/.NET 3.5
-runtime compatibility. Those checks require separate validation.
+The implementation uses one partial class across eleven source files in
+`ConfigurationFilesReader/`: `ConfigurationFile.cs` holds shared settings and
+constructors; `ConfigurationFile.Parsing.cs` handles block identification and loading;
+`ConfigurationFile.Persistence.cs` handles dump/save and round-trip validation.
+`ConfigurationFile.Sections.cs`, `ConfigurationFile.Tables.cs`,
+`ConfigurationFile.Dictionaries.cs`, `ConfigurationFile.Lists.cs`,
+`ConfigurationFile.Texts.cs` and `ConfigurationFile.Encoded.cs` hold the
+respective storage and access methods, including parameter methods in Sections.
+`ConfigurationFile.ReadOnly.cs` supplies collection views and snapshot creation;
+`ConfigurationSnapshot.cs` and `ReadOnlyStringDictionary.cs` define the immutable
+read API and the .NET 3.5 dictionary wrapper.
+`ConfigurationFile.Sources.cs` stores provenance and provides source-location lookups.
 
 ## License
 

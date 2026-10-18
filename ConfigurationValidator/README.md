@@ -87,7 +87,9 @@ errors produce exit code 1.
 
 For punctuation, comments and raw TEXT rules, see the
 [library file format](../README.md#file-format). The validator uses the library's
-default case-sensitive mode; it does not expose a case-sensitivity switch.
+default case-sensitive mode and working-directory INCLUDE resolution. Configurable
+resolvers, stream labels, typed conversion policies, snapshots and source-location
+lookups are library APIs; the console exposes no switches for them.
 
 ## Diagnostics and exit codes
 
@@ -97,11 +99,9 @@ the exception type and original library message (including inner exceptions) to
 stderr, without a stack trace. The first loading error stops validation; the tool
 does not save or modify the input file unless explicitly requested with `--rewrite`.
 
-Loading diagnostics include the full source path, filename and one-based line
-number, counting comments and blank lines. Errors in included files show their
-source location and the include-header locations in the parent files. File-open
-errors say `before reading`; Base64 errors point to the encoded block's header.
-The validator prints the contextual message and its original inner exception.
+The validator prints the library's contextual loading diagnostics and original
+inner exceptions. For source paths, line-number rules and INCLUDE chains, see the
+[library diagnostic reference](../README.md#loading-diagnostics).
 
 | Exit code | Meaning |
 | --- | --- |
