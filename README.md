@@ -285,7 +285,8 @@ checks without a source file do not have a file location.
 
 ## API reference
 
-The diagram shows the public API of the single partial `ConfigurationFile` class.
+The diagram shows the public API of the partial `ConfigurationFile` class and
+its null-value exception.
 Members are ordered by shared settings and constructors, sections/parameters,
 tables, dictionaries, lists, and persistence. Parsing remains private.
 `strDictionary` in the diagram denotes `Dictionary<string, string>`.
@@ -367,6 +368,14 @@ classDiagram
         +save(FileInfo Path, string FileName) void
         +save(FileInfo File) void
     }
+    class NullParameterValueException {
+        +string SectionName
+        +string ParameterName
+        +NullParameterValueException(string SectionName, string ParameterName)
+    }
+    InvalidOperationException <|-- NullParameterValueException
+    ConfigurationFile ..> NullParameterValueException : throws on typed null reads without defaults
+    note for NullParameterValueException "SectionName and ParameterName are read-only."
     note for ConfigurationFile "Namespace: ConfigurationFilesReader. All three array fields are readonly. autoUpdateRegistry and autoSaveRegistry have get/set access and default to false. CaseSensitive is read-only and defaults to true."
 ```
 
@@ -448,8 +457,9 @@ ASCII bytes when `Encoded=true`; it returns an independent array in either mode.
 
 String parameter reads return true for an existing key even when its value is null
 or empty. A missing key/section returns false and null. Typed overloads support
-`bool`, `int`, `long`, `float` and `double`; false means missing, null, invalid or
-out of range, and the output is reset to false/zero. Use `containsParameter` and
+`bool`, `int`, `long`, `float` and `double`; false means missing, invalid or
+out of range, and the output is reset to false/zero. An existing null value
+throws `NullParameterValueException`, with the output also reset to false/zero. Use `containsParameter` and
 the string overload to distinguish these cases. The new typed reads:
 
 - Accept only `TRUE`/`FALSE` (ordinal, case-insensitive) and `1`/`0` for booleans.
@@ -458,7 +468,8 @@ the string overload to distinguish these cases. The new typed reads:
   Reject NaN, infinity and overflow, including values outside the float range.
   Ordinary floating-point rounding and underflow still apply.
 
-Existing `getParameter` conversion and default behavior remains unchanged.
+Typed `getParameter` overloads with a default return that default for a stored
+null. Other conversion and missing-default behavior remains unchanged.
 
 ```csharp
 List<string> rows;
@@ -639,9 +650,25 @@ Constructor bool arguments select case sensitivity, not automatic updates or sav
 
 ### Value and format limitations
 
-Null values may be stored in memory and returned by the string getter. Typed
-getters call `Trim()` and throw `NullReferenceException` for a stored null;
-`save` rejects null values. Empty names and empty string values are allowed.
+Null values may be stored in memory and returned by string getters. Typed reads
+handle a stored null as follows:
+
+| Method | Result for an existing null value |
+| --- | --- |
+| `getParameter(..., bool/double/long/int/float DefaultVal)` | Returns the supplied default without changing the stored null. |
+| `tryGetParameter(..., out bool/double/long/int/float Value)` | Throws `NullParameterValueException` because no default was supplied. |
+| String getters and `containsParameter` | Preserve/report the existing null; they do not throw this exception. |
+
+`NullParameterValueException` derives from `InvalidOperationException` in the
+`ConfigurationFilesReader` namespace. Its read-only `SectionName` and
+`ParameterName` identify the requested lookup. It is serializable and its message
+identifies the null parameter. Null is different from an absent key or an empty
+string: typed try-reads still return false for those cases. Null names still
+throw `ArgumentNullException`.
+
+Reading a stored null never replaces it or saves the registry, even when both
+automatic flags are true. `save` continues to reject stored null values.
+Empty names and empty string values remain allowed.
 Integer casts can wrap and float casts can overflow; the numeric getters retain
 these legacy conversions rather than guaranteeing range-safe results.
 

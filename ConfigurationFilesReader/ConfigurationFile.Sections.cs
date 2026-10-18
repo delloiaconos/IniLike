@@ -99,6 +99,7 @@ namespace ConfigurationFilesReader
         public bool getParameter(string SecName, string ParName, bool DefaultVal)
         {
             string strVal = getParameter(SecName, ParName, DefaultVal ? "TRUE" : "FALSE");
+            if (strVal == null) { return DefaultVal; }
             strVal = strVal.Trim().ToUpper();
             return strVal == "TRUE" || strVal == "1";
         }
@@ -107,6 +108,7 @@ namespace ConfigurationFilesReader
         public double getParameter(string SecName, string ParName, double DefaultVal)
         {
             string strVal = getParameter(SecName, ParName, DefaultVal.ToString(CultureInfo.InvariantCulture));
+            if (strVal == null) { return DefaultVal; }
             strVal = strVal.Trim();
             strVal = strVal.Replace(',', '.');
             double outVal;
@@ -129,6 +131,7 @@ namespace ConfigurationFilesReader
         public long getParameter(string SecName, string ParName, long DefaultVal)
         {
             string strVal = getParameter(SecName, ParName, DefaultVal.ToString(CultureInfo.InvariantCulture));
+            if (strVal == null) { return DefaultVal; }
             strVal = strVal.Trim();
             
             long outVal;
@@ -221,7 +224,8 @@ namespace ConfigurationFilesReader
         {
             Value = false;
             string Text;
-            if (!tryGetParameter(Section, Parameter, out Text) || Text == null) { return false; }
+            if (!tryGetParameter(Section, Parameter, out Text)) { return false; }
+            if (Text == null) { throw new NullParameterValueException(Section, Parameter); }
             Text = Text.Trim();
             if (Text == "1" || String.Equals(Text, "true", StringComparison.OrdinalIgnoreCase)) {
                 Value = true;
@@ -230,12 +234,13 @@ namespace ConfigurationFilesReader
             return Text == "0" || String.Equals(Text, "false", StringComparison.OrdinalIgnoreCase);
         }
 
-        // Typed reads reject invalid, null and out-of-range values without mutation.
+        // Typed reads reject invalid/out-of-range values and throw for stored nulls.
         public bool tryGetParameter(string Section, string Parameter, out int Value)
         {
             Value = 0;
             string Text;
-            if (!tryGetParameter(Section, Parameter, out Text) || Text == null) { return false; }
+            if (!tryGetParameter(Section, Parameter, out Text)) { return false; }
+            if (Text == null) { throw new NullParameterValueException(Section, Parameter); }
             int Parsed;
             if (!int.TryParse(Text.Trim(), NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out Parsed)) { return false; }
@@ -243,12 +248,13 @@ namespace ConfigurationFilesReader
             return true;
         }
 
-        // Typed reads reject invalid, null and out-of-range values without mutation.
+        // Typed reads reject invalid/out-of-range values and throw for stored nulls.
         public bool tryGetParameter(string Section, string Parameter, out long Value)
         {
             Value = 0;
             string Text;
-            if (!tryGetParameter(Section, Parameter, out Text) || Text == null) { return false; }
+            if (!tryGetParameter(Section, Parameter, out Text)) { return false; }
+            if (Text == null) { throw new NullParameterValueException(Section, Parameter); }
             long Parsed;
             if (!long.TryParse(Text.Trim(), NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out Parsed)) { return false; }
@@ -256,12 +262,13 @@ namespace ConfigurationFilesReader
             return true;
         }
 
-        // Typed reads reject invalid, null and out-of-range values without mutation.
+        // Typed reads reject invalid/out-of-range values and throw for stored nulls.
         public bool tryGetParameter(string Section, string Parameter, out double Value)
         {
             Value = 0;
             string Text;
-            if (!tryGetParameter(Section, Parameter, out Text) || Text == null) { return false; }
+            if (!tryGetParameter(Section, Parameter, out Text)) { return false; }
+            if (Text == null) { throw new NullParameterValueException(Section, Parameter); }
             double Parsed;
             if (!double.TryParse(Text.Trim().Replace(',', '.'), NumberStyles.Float | NumberStyles.AllowThousands,
                 CultureInfo.InvariantCulture, out Parsed) || Double.IsNaN(Parsed) || Double.IsInfinity(Parsed)) { return false; }
@@ -269,12 +276,13 @@ namespace ConfigurationFilesReader
             return true;
         }
 
-        // Typed reads reject invalid, null and out-of-range values without mutation.
+        // Typed reads reject invalid/out-of-range values and throw for stored nulls.
         public bool tryGetParameter(string Section, string Parameter, out float Value)
         {
             Value = 0;
             string Text;
-            if (!tryGetParameter(Section, Parameter, out Text) || Text == null) { return false; }
+            if (!tryGetParameter(Section, Parameter, out Text)) { return false; }
+            if (Text == null) { throw new NullParameterValueException(Section, Parameter); }
             double Parsed;
             if (!double.TryParse(Text.Trim().Replace(',', '.'), NumberStyles.Float | NumberStyles.AllowThousands,
                 CultureInfo.InvariantCulture, out Parsed) || Double.IsNaN(Parsed) || Double.IsInfinity(Parsed) || Parsed > float.MaxValue || Parsed < -float.MaxValue) { return false; }

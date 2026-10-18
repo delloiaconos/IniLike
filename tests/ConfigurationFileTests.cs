@@ -1564,7 +1564,7 @@ class ConfigurationFileTests
         equal(true, Memory.containsParameter("S", "null"));
         equal(true, Memory.tryGetParameter("S", "empty", out Raw));
         equal("", Raw);
-        foreach (string Key in new string[] { "null", "empty", "missing" }) {
+        foreach (string Key in new string[] { "empty", "missing" }) {
             bool B; int I; long L; float F; double D;
             equal(false, Memory.tryGetParameter("S", Key, out B)); equal(false, B);
             equal(false, Memory.tryGetParameter("S", Key, out I)); equal(0, I);
@@ -1600,8 +1600,44 @@ class ConfigurationFileTests
         }
     }
 
+    static void nullTypedParameters()
+    {
+        foreach (bool Update in new bool[] { false, true }) {
+            foreach (bool Save in new bool[] { false, true }) {
+                const string Source = "[S]\nk=original\n";
+                ConfigurationFile Config = load(Source);
+                Config.setParameter("S", "k", null);
+                Config.autoUpdateRegistry = Update;
+                Config.autoSaveRegistry = Save;
+                equal(true, Config.getParameter("S", "k", true));
+                equal(2.5, Config.getParameter("S", "k", 2.5));
+                equal(2.5f, Config.getParameter("S", "k", 2.5f));
+                equal(42L, Config.getParameter("S", "k", 42L));
+                equal(42, Config.getParameter("S", "k", 42));
+                bool B = true; double D = 1; float F = 1; long L = 1; int I = 1;
+                throws<NullParameterValueException>(delegate { Config.tryGetParameter("S", "k", out B); }); equal(false, B);
+                throws<NullParameterValueException>(delegate { Config.tryGetParameter("S", "k", out D); }); equal(0.0, D);
+                throws<NullParameterValueException>(delegate { Config.tryGetParameter("S", "k", out F); }); equal(0f, F);
+                throws<NullParameterValueException>(delegate { Config.tryGetParameter("S", "k", out L); }); equal(0L, L);
+                throws<NullParameterValueException>(delegate { Config.tryGetParameter("S", "k", out I); }); equal(0, I);
+                NullParameterValueException Error = (NullParameterValueException)captureError(delegate { Config.tryGetParameter("S", "k", out I); });
+                equal("S", Error.SectionName);
+                equal("k", Error.ParameterName);
+                equal(true, Error.Message.Contains("null value"));
+                equal<string>(null, get(Config, "S", "k"));
+                string Raw;
+                equal(true, Config.tryGetParameter("S", "k", out Raw));
+                equal<string>(null, Raw);
+                equal(true, Config.containsParameter("S", "k"));
+                equal(1, Config.listParameters("S").Count);
+                equal(Source, File.ReadAllText("config.ini"));
+            }
+        }
+    }
+
     static int Main()
     {
+        test("stored null typed reads return defaults or throw a specific exception", nullTypedParameters);
         test("explicit reads distinguish missing, empty, null and invalid values without side effects", explicitReads);
         test("inline comments apply globally except raw TEXT content", inlineComments);
         test("trailing punctuation is literal in sections, dictionaries, tables and lists", literalTrailingPunctuation);
