@@ -1272,6 +1272,420 @@ class ConfigurationFileTests
         }
     }
 
+    static void location(SourceLocation Location, string Source, string FilePath, int Line)
+    {
+        equal(true, Location != null);
+        equal(Source, Location.SourceName);
+        equal(FilePath, Location.FilePath);
+        equal(Line, Location.LineNumber);
+    }
+
+    static void elementSources()
+    {
+        string Root = Path.GetFullPath("config.ini");
+        string Child = Path.GetFullPath("child.ini");
+        string Grand = Path.GetFullPath("grand.ini");
+        File.WriteAllText("grand.ini", "[DICT:Nested]\ng=3\n[LIST:Nested]\nlast\n");
+        File.WriteAllText("child.ini", "## child\n[SEC:Child]\np=2\n[TABLE:ChildRows]\nchild row\n[INC:grand.ini]\n");
+        string[] Lines = { "## root", "", "[SECTION:S] ## header", "ignored", " k = v ## value", "", "[DICT:D]", "d=1", "", "[TBL:T]", "", "## comment", "first", "second", "[END:T]", "[LST:L]", "a=b", "second item", "[END]", "[INC:child.ini]", "", "[TXT:Text]", "  raw  ", "[END]", "[B64:Binary]", "AQID", "[LIST:Empty]" };
+        SourceLocation Source;
+        foreach (string NewLine in new string[] { "\n", "\r\n", "\r" }) {
+            File.WriteAllText("config.ini", String.Join(NewLine, Lines));
+            ConfigurationFile Config = new ConfigurationFile("config.ini", false);
+            equal(true, Config.tryGetSectionSource("s", out Source)); location(Source, Root, Root, 3);
+            equal(true, Config.tryGetParameterSource("s", "K", out Source)); location(Source, Root, Root, 5);
+            equal(true, Config.tryGetDictionarySource("d", out Source)); location(Source, Root, Root, 7);
+            equal(true, Config.tryGetDictionaryValueSource("D", "D", out Source)); location(Source, Root, Root, 8);
+            equal(true, Config.tryGetTableSource("t", out Source)); location(Source, Root, Root, 10);
+            equal(true, Config.tryGetTableRowSource("T", 0, out Source)); location(Source, Root, Root, 13);
+            equal(true, Config.tryGetTableRowSource("T", 1, out Source)); location(Source, Root, Root, 14);
+            equal(true, Config.tryGetListSource("L", out Source)); location(Source, Root, Root, 16);
+            equal(true, Config.tryGetListItemSource("l", 0, out Source)); location(Source, Root, Root, 17);
+            equal(true, Config.tryGetListItemSource("L", 1, out Source)); location(Source, Root, Root, 18);
+            equal(true, Config.tryGetTextSource("text", out Source)); location(Source, Root, Root, 22);
+            equal(true, Config.tryGetEncodedSource("binary", out Source)); location(Source, Root, Root, 25);
+            equal(true, Config.tryGetListSource("empty", out Source)); location(Source, Root, Root, 27);
+            equal(true, Config.tryGetSectionSource("child", out Source)); location(Source, Child, Child, 2);
+            equal(true, Config.tryGetParameterSource("child", "p", out Source)); location(Source, Child, Child, 3);
+            equal(true, Config.tryGetTableRowSource("childrows", 0, out Source)); location(Source, Child, Child, 5);
+            equal(true, Config.tryGetDictionaryValueSource("Nested", "g", out Source)); location(Source, Grand, Grand, 2);
+            equal(true, Config.tryGetListItemSource("Nested", 0, out Source)); location(Source, Grand, Grand, 4);
+            equal(false, Config.tryGetSectionSource("missing", out Source)); equal(null, Source);
+            equal(false, Config.tryGetParameterSource("S", "missing", out Source)); equal(null, Source);
+            equal(false, Config.tryGetDictionaryValueSource("missing", "d", out Source)); equal(null, Source);
+            equal(false, Config.tryGetTableRowSource("T", -1, out Source)); equal(null, Source);
+            equal(false, Config.tryGetListItemSource("Empty", 0, out Source)); equal(null, Source);
+            equal(false, Config.tryGetTableRowSource("T", 2, out Source)); equal(null, Source);
+            ConfigurationSnapshot Snapshot = Config.createSnapshot();
+            Config.autoUpdateRegistry = true;
+            Config.setParameter("S", "k", "changed");
+            Config.setParameter("S", "new", "new");
+            Config.setParameter("NEW", "k", "v");
+            equal(true, Config.tryGetParameterSource("S", "k", out Source)); location(Source, Root, Root, 5);
+            equal(false, Config.tryGetParameterSource("S", "new", out Source)); equal(null, Source);
+            equal(false, Config.tryGetSectionSource("NEW", out Source)); equal(null, Source);
+            Config.getDictionary("D").Remove("d");
+            equal(false, Config.tryGetDictionaryValueSource("D", "d", out Source)); equal(null, Source);
+            Config.getDictionary("D")["d"] = "replaced";
+            equal(true, Config.tryGetDictionaryValueSource("D", "d", out Source)); location(Source, Root, Root, 8);
+            Config.getTable("T").Add("new");
+            equal(true, Config.tryGetTableRowSource("T", 0, out Source)); location(Source, Root, Root, 13);
+            equal(false, Config.tryGetTableRowSource("T", 2, out Source)); equal(null, Source);
+            Config.getTable("T").RemoveAt(0);
+            equal(false, Config.tryGetTableRowSource("T", 0, out Source)); equal(null, Source);
+            Config.getList("L")[0] = new string("a=b".ToCharArray());
+            equal(false, Config.tryGetListItemSource("L", 0, out Source)); equal(null, Source);
+            equal(true, Snapshot.tryGetTableRowSource("T", 0, out Source)); location(Source, Root, Root, 13);
+            equal(true, Snapshot.tryGetListItemSource("L", 0, out Source)); location(Source, Root, Root, 17);
+            equal(true, Snapshot.tryGetDictionaryValueSource("D", "d", out Source)); location(Source, Root, Root, 8);
+            ConfigurationSnapshot Edited = Config.createSnapshot();
+            equal(false, Edited.tryGetTableRowSource("T", 0, out Source)); equal(null, Source);
+            string Original = File.ReadAllText("config.ini");
+            Config.autoSaveRegistry = true;
+            equal(false, Config.tryGetParameterSource("not-created", "not-created", out Source));
+            equal(false, Config.containsSection("not-created"));
+            equal(Original, File.ReadAllText("config.ini"));
+            Config.save("copy.ini");
+            equal(true, Config.tryGetSectionSource("S", out Source)); location(Source, Root, Root, 3);
+            ConfigurationFile Reloaded = new ConfigurationFile("copy.ini");
+            equal(true, Reloaded.tryGetSectionSource("S", out Source)); equal(Path.GetFullPath("copy.ini"), Source.FilePath);
+            throws<ArgumentNullException>(delegate { Config.tryGetTableRowSource(null, 0, out Source); });
+            throws<ArgumentNullException>(delegate { Config.tryGetParameterSource("S", null, out Source); });
+            throws<ArgumentNullException>(delegate { Snapshot.tryGetDictionarySource(null, out Source); });
+        }
+        using (MemoryStream Stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("\n[S]\nk=v\n[INC:child.ini]\n"))) {
+            ConfigurationLoadOptions Options = new ConfigurationLoadOptions { SourceName = "uploaded settings" };
+            ConfigurationFile Named = new ConfigurationFile(Stream, Options);
+            Options.SourceName = "later";
+            equal(true, Named.tryGetParameterSource("S", "k", out Source)); location(Source, "uploaded settings", null, 3);
+            equal(true, Named.tryGetParameterSource("Child", "p", out Source)); location(Source, Child, Child, 3);
+            equal(2, Named.listLoadedFiles().Count);
+            equal(true, Named.createSnapshot().tryGetSectionSource("S", out Source)); location(Source, "uploaded settings", null, 2);
+            equal(true, Stream.CanRead);
+        }
+        using (MemoryStream Stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("[S]\nk=v"))) {
+            ConfigurationFile Anonymous = new ConfigurationFile(Stream);
+            equal(true, Anonymous.tryGetParameterSource("S", "k", out Source)); location(Source, "<stream>", null, 2);
+        }
+        File.WriteAllText("file-stream.ini", "[S]\nk=v");
+        using (FileStream Stream = File.OpenRead("file-stream.ini")) {
+            ConfigurationFile Named = new ConfigurationFile(Stream, new ConfigurationLoadOptions { SourceName = "friendly file" });
+            equal(true, Named.tryGetParameterSource("S", "k", out Source)); location(Source, "friendly file", Path.GetFullPath("file-stream.ini"), 2);
+            equal(Path.GetFullPath("file-stream.ini"), Named.listLoadedFiles()[0]);
+        }
+        foreach (string Text in new string[] { "[S]\nk=1\nk=2", "\n[ENC:B]\n!", "\n[S]\n[END:wrong]" }) {
+            using (MemoryStream Stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(Text))) {
+                Exception Error = captureError(delegate { new ConfigurationFile(Stream, new ConfigurationLoadOptions { SourceName = "uploaded settings" }); });
+                equal("uploaded settings", (string)Error.Data["SourceName"]);
+                equal("uploaded settings", (string)Error.Data["FilePath"]);
+                equal(Text.Contains("ENC") ? 2 : 3, (int)Error.Data["LineNumber"]);
+                equal(true, Error.Message.Contains("uploaded settings"));
+                equal(true, Error.InnerException != null);
+                equal(true, Stream.CanRead);
+            }
+        }
+        using (MemoryStream Stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("[INC:alias]"))) {
+            new ConfigurationFile(Stream, new ConfigurationLoadOptions {
+                SourceName = "virtual input",
+                IncludeResolver = delegate(string Name, string Parent) {
+                    if (Name == "alias") { equal(null, Parent); return "child.ini"; }
+                    equal(Child, Parent); return Name;
+                }
+            });
+        }
+        File.WriteAllText("file-stream.ini", "[S]\n[END:wrong]");
+        using (FileStream Stream = File.OpenRead("file-stream.ini")) {
+            Exception Error = captureError(delegate { new ConfigurationFile(Stream, new ConfigurationLoadOptions { SourceName = "friendly file" }); });
+            equal("friendly file", (string)Error.Data["SourceName"]);
+            equal(Path.GetFullPath("file-stream.ini"), (string)Error.Data["FilePath"]);
+            equal("file-stream.ini", (string)Error.Data["FileName"]);
+            equal(2, (int)Error.Data["LineNumber"]);
+        }
+        using (MemoryStream Stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("\n[INC:does-not-exist.ini]"))) {
+            Exception Error = captureError(delegate { new ConfigurationFile(Stream, new ConfigurationLoadOptions { SourceName = "uploaded settings" }); });
+            equal(typeof(FileNotFoundException), Error.GetType());
+            equal(Path.GetFullPath("does-not-exist.ini"), (string)Error.Data["SourceName"]);
+            equal(Path.GetFullPath("does-not-exist.ini"), (string)Error.Data["FilePath"]);
+            equal(0, (int)Error.Data["LineNumber"]);
+            equal(true, Error.Message.Contains("Source 'uploaded settings', line 2"));
+        }
+        using (MemoryStream Stream = new MemoryStream(new byte[0])) {
+            throws<ArgumentException>(delegate { new ConfigurationFile(Stream, new ConfigurationLoadOptions { SourceName = "  " }); });
+        }
+        equal(false, new ConfigurationFile().tryGetSectionSource("S", out Source)); equal(null, Source);
+    }
+
+    static void immutableSnapshots()
+    {
+        File.WriteAllText("child.ini", "[LIST:EMPTY]\n");
+        File.WriteAllText("config.ini", "[S]\nk=v\n[TABLE:T]\nrow\n[LIST:L]\nitem\n[DICT:D]\nk=value\n[TEXT:TXT]\n  raw text  \n[END]\n[ENC:B]\nAQID\n[INC:child.ini]\n");
+        ConfigurationFile Config = new ConfigurationFile("config.ini", false);
+        string Original = File.ReadAllText("config.ini");
+        Config.autoUpdateRegistry = true;
+        Config.setParameter("S", "null", (string)null);
+        Config.setParameter("S", "raw", "  unsavable\nvalue  ");
+        Config.getDictionary("D")["null"] = null;
+        Config.autoSaveRegistry = true;
+        System.Collections.ObjectModel.ReadOnlyCollection<string> Table = Config.getTableReadOnly("t");
+        System.Collections.ObjectModel.ReadOnlyCollection<string> List = Config.getListReadOnly("l");
+        ReadOnlyStringDictionary Dictionary = Config.getDictionaryReadOnly("d");
+        ConfigurationSnapshot Snapshot = Config.createSnapshot();
+        equal(false, Snapshot.CaseSensitive);
+        equal(true, Snapshot.containsList("empty"));
+        equal(false, Snapshot.containsList("missing"));
+        equal(0, Snapshot.getList("EMPTY").Count);
+        equal(0, Snapshot.getList("missing").Count);
+        equal(0, Snapshot.getTable("missing").Count);
+        equal(0, Snapshot.getDictionary("missing").Count);
+        equal(0, Snapshot.getSection("missing").Count);
+        equal(true, Snapshot.containsParameter("s", "NULL"));
+        equal(null, Snapshot.getSection("s")["NULL"]);
+        equal("  unsavable\nvalue  ", Snapshot.getSection("S")["raw"]);
+        equal(null, Snapshot.getDictionary("D")["NULL"]);
+        equal("  raw text  ", Snapshot.getText("txt"));
+        equal(2, Snapshot.listLoadedFiles().Count);
+        equal(true, Snapshot.containsEncoded("b"));
+        byte[] Bytes = Snapshot.getEncoded("B"); Bytes[0] = 99;
+        equal((byte)1, Snapshot.getEncoded("b")[0]);
+        equal("AQID", System.Text.Encoding.ASCII.GetString(Snapshot.getEncoded("b", true)));
+        Config.getTable("T")[0] = "changed";
+        Config.getTable("T").Add("new row");
+        Config.getList("L").Clear();
+        Config.getList("EMPTY").Add("new item");
+        Config.getDictionary("D")["k"] = "changed";
+        Config.getDictionary("D").Remove("null");
+        // Existing updates never save, even with automatic saving enabled.
+        Config.setParameter("S", "k", "changed");
+        equal("changed", Table[0]); equal(2, Table.Count);
+        equal(0, List.Count); equal("changed", Dictionary["K"]);
+        equal(false, Dictionary.containsKey("null"));
+        equal("row", Snapshot.getTable("T")[0]); equal(1, Snapshot.getTable("T").Count);
+        equal("item", Snapshot.getList("L")[0]); equal(0, Snapshot.getList("EMPTY").Count);
+        equal("value", Snapshot.getDictionary("D")["K"]);
+        equal(true, Snapshot.getDictionary("D").containsKey("null"));
+        equal("v", Snapshot.getSection("s")["K"]);
+        foreach (IList<string> Rows in new IList<string>[] { Table, List, Snapshot.getTable("T"), Snapshot.getList("L"), Snapshot.listSections(), Snapshot.listLoadedFiles() }) {
+            equal(true, Rows.IsReadOnly);
+            throws<NotSupportedException>(delegate { Rows.Add("bad"); });
+            throws<NotSupportedException>(delegate { Rows.Clear(); });
+            if (Rows.Count > 0) {
+                throws<NotSupportedException>(delegate { Rows[0] = "bad"; });
+                throws<NotSupportedException>(delegate { Rows.RemoveAt(0); });
+            }
+            System.Collections.IList NonGeneric = (System.Collections.IList)Rows;
+            throws<NotSupportedException>(delegate { NonGeneric.Add("bad"); });
+            throws<NotSupportedException>(delegate { NonGeneric.Clear(); });
+        }
+        foreach (IDictionary<string, string> Entries in new IDictionary<string, string>[] { Dictionary, Snapshot.getDictionary("D"), Snapshot.getSection("S") }) {
+            equal(true, Entries.IsReadOnly);
+            throws<NotSupportedException>(delegate { Entries["k"] = "bad"; });
+            throws<NotSupportedException>(delegate { Entries.Add("new", "bad"); });
+            throws<NotSupportedException>(delegate { Entries.Remove("k"); });
+            throws<NotSupportedException>(delegate { Entries.Clear(); });
+            ICollection<KeyValuePair<string, string>> Pairs = Entries;
+            throws<NotSupportedException>(delegate { Pairs.Add(new KeyValuePair<string, string>("new", "bad")); });
+            throws<NotSupportedException>(delegate { Pairs.Remove(new KeyValuePair<string, string>("k", "value")); });
+            throws<NotSupportedException>(delegate { Entries.Keys.Clear(); });
+            throws<NotSupportedException>(delegate { Entries.Values.Clear(); });
+            equal(false, Entries is Dictionary<string, string>);
+            int Count = 0;
+            foreach (KeyValuePair<string, string> Pair in Entries) { Count++; }
+            equal(Entries.Count, Count);
+            KeyValuePair<string, string>[] Copy = new KeyValuePair<string, string>[Entries.Count];
+            Pairs.CopyTo(Copy, 0);
+            equal(Entries.Count, Copy.Length);
+        }
+        string Raw;
+        equal(true, Snapshot.tryGetParameter("s", "k", out Raw)); equal("v", Raw);
+        equal(true, Snapshot.tryGetDictionaryValue("d", "null", out Raw)); equal(null, Raw);
+        throws<ArgumentNullException>(delegate { Config.getTableReadOnly(null); });
+        throws<ArgumentNullException>(delegate { Config.getListReadOnly(null); });
+        throws<ArgumentNullException>(delegate { Config.getDictionaryReadOnly(null); });
+        throws<ArgumentNullException>(delegate { Snapshot.getSection(null); });
+        equal(Original, File.ReadAllText("config.ini"));
+        Config.autoSaveRegistry = false;
+        Config.setParameter("NEW", "new", "new");
+        equal(false, Snapshot.containsSection("NEW"));
+        equal(1, Snapshot.listSections().Count);
+        ConfigurationSnapshot Empty = new ConfigurationFile().createSnapshot();
+        equal(true, Empty.CaseSensitive); equal(0, Empty.listLoadedFiles().Count);
+        equal(0, Empty.listSections().Count);
+    }
+
+    static void typedDictionaryValues()
+    {
+        ConfigurationFile Config = load("[DICT:D]\ninteger=2147483647\nlong=9223372036854775807\ndecimal=1,25\ninvalid=oops\nempty=\nbool=TrUe\n[S]\ninteger=7\n");
+        string Original = File.ReadAllText("config.ini");
+        Config.autoUpdateRegistry = true;
+        Config.autoSaveRegistry = true;
+        Dictionary<string, string> Entries = Config.getDictionary("D");
+        Entries["null"] = null;
+        Entries["overflow"] = "9223372036854775808";
+        Entries["floatOverflow"] = "3.5e38";
+        Entries["doubleOverflow"] = "1e9999";
+        Entries["nan"] = "NaN";
+        Entries["infinity"] = "Infinity";
+        Entries["negativeInfinity"] = "-Infinity";
+        Entries["grouped"] = "1,234.5";
+        int Before = Entries.Count;
+        DictionaryValueStatus Status;
+        int Integer = 99;
+        long Long;
+        double Double;
+        float Float;
+        bool Boolean;
+        string Raw;
+        equal(true, Config.tryGetDictionaryValue("D", "integer", out Integer)); equal(int.MaxValue, Integer);
+        equal(true, Config.tryGetDictionaryValue("D", "long", out Long)); equal(long.MaxValue, Long);
+        equal(true, Config.tryGetDictionaryValue("D", "decimal", out Double)); equal(1.25, Double);
+        equal(true, Config.tryGetDictionaryValue("D", "decimal", out Float)); equal(1.25f, Float);
+        equal(true, Config.tryGetDictionaryValue("D", "bool", out Boolean)); equal(true, Boolean);
+        foreach (string Name in new string[] { "invalid", "empty", "null", "overflow", "missing" }) {
+            equal(false, Config.tryGetDictionaryValue("D", Name, null, out Integer, out Status));
+            equal(0, Integer);
+            equal(Name == "null" ? DictionaryValueStatus.NullValue : Name == "missing" ? DictionaryValueStatus.MissingKey : DictionaryValueStatus.InvalidValue, Status);
+        }
+        equal(false, Config.tryGetDictionaryValue("missing", "integer", null, out Long, out Status));
+        equal(DictionaryValueStatus.MissingDictionary, Status); equal(0L, Long);
+        equal(true, Config.containsDictionaryValue("D", "null"));
+        equal(true, Config.tryGetDictionaryValue("D", "null", out Raw)); equal(null, Raw);
+        equal(false, Config.tryGetDictionaryValue("D", "missing", out Raw)); equal(null, Raw);
+        DictionaryConversionOptions Options = new DictionaryConversionOptions();
+        foreach (string Culture in new string[] { "en-US", "it-IT", "fr-FR" }) {
+            Options.NumericCulture = new System.Globalization.CultureInfo(Culture);
+            Options.DecimalSeparator = DecimalSeparatorPolicy.Culture;
+            string Separator = Options.NumericCulture.NumberFormat.NumberDecimalSeparator;
+            Entries["culture"] = " -1" + Separator + "5e2 ";
+            equal(true, Config.tryGetDictionaryValue("D", "culture", Options, out Double, out Status));
+            equal(DictionaryValueStatus.Success, Status); equal(-150.0, Double);
+            equal(false, Config.tryGetDictionaryValue("D", "grouped", Options, out Double)); equal(0.0, Double);
+        }
+        Options.DecimalSeparator = DecimalSeparatorPolicy.Dot;
+        equal(false, Config.tryGetDictionaryValue("D", "decimal", Options, out Double));
+        Options.DecimalSeparator = DecimalSeparatorPolicy.Comma;
+        equal(true, Config.tryGetDictionaryValue("D", "decimal", Options, out Double));
+        Entries["dot"] = "1.25";
+        equal(false, Config.tryGetDictionaryValue("D", "dot", Options, out Double));
+        Options.DecimalSeparator = DecimalSeparatorPolicy.DotOrComma;
+        equal(true, Config.tryGetDictionaryValue("D", "dot", Options, out Double));
+        Options.NumericCulture = System.Globalization.CultureInfo.InvariantCulture;
+        foreach (string Name in new string[] { "nan", "infinity", "negativeInfinity", "doubleOverflow", "grouped" }) {
+            equal(false, Config.tryGetDictionaryValue("D", Name, Options, out Double, out Status));
+            equal(DictionaryValueStatus.InvalidValue, Status); equal(0.0, Double);
+        }
+        Options.AllowNonFinite = true;
+        equal(true, Config.tryGetDictionaryValue("D", "nan", Options, out Double)); equal(true, System.Double.IsNaN(Double));
+        equal(true, Config.tryGetDictionaryValue("D", "infinity", Options, out Float)); equal(true, Single.IsPositiveInfinity(Float));
+        equal(true, Config.tryGetDictionaryValue("D", "negativeInfinity", Options, out Double)); equal(true, System.Double.IsNegativeInfinity(Double));
+        equal(false, Config.tryGetDictionaryValue("D", "doubleOverflow", Options, out Double)); equal(0.0, Double);
+        equal(false, Config.tryGetDictionaryValue("D", "floatOverflow", Options, out Float)); equal(0f, Float);
+        string[] TrueValues = { "true", "1", "YES", "On" };
+        string[] FalseValues = { "FALSE", "0", "No", "off" };
+        for (int Index = 0; Index < TrueValues.Length; Index++) {
+            Options.BooleanValues = (BooleanRepresentations)(1 << Index);
+            for (int Candidate = 0; Candidate < TrueValues.Length; Candidate++) {
+                Entries["booleanTest"] = " " + TrueValues[Candidate] + " ";
+                equal(Index == Candidate, Config.tryGetDictionaryValue("D", "booleanTest", Options, out Boolean));
+                equal(Index == Candidate, Boolean);
+                Entries["booleanTest"] = FalseValues[Candidate];
+                equal(Index == Candidate, Config.tryGetDictionaryValue("D", "booleanTest", Options, out Boolean)); equal(false, Boolean);
+            }
+        }
+        Options.BooleanValues = BooleanRepresentations.None;
+        equal(false, Config.tryGetDictionaryValue("D", "bool", Options, out Boolean));
+        Options.NumericCulture = null;
+        throws<ArgumentNullException>(delegate { Config.tryGetDictionaryValue("D", "integer", Options, out Integer); });
+        throws<ArgumentNullException>(delegate { Config.tryGetDictionaryValue(null, "integer", out Integer); });
+        throws<ArgumentNullException>(delegate { Config.containsDictionaryValue("D", null); });
+        Options.NumericCulture = System.Globalization.CultureInfo.InvariantCulture;
+        Options.DecimalSeparator = (DecimalSeparatorPolicy)999;
+        throws<ArgumentException>(delegate { Config.tryGetDictionaryValue("D", "integer", Options, out Integer); });
+        Options.DecimalSeparator = DecimalSeparatorPolicy.Culture;
+        Options.BooleanValues = (BooleanRepresentations)16;
+        throws<ArgumentException>(delegate { Config.tryGetDictionaryValue("D", "integer", Options, out Integer); });
+        equal(Before + 3, Entries.Count);
+        equal(1, Config.listDictionaries().Count);
+        equal(Original, File.ReadAllText("config.ini"));
+        equal(7, Config.getParameter("S", "integer", 0));
+        ConfigurationFile Insensitive = new ConfigurationFile("config.ini", false);
+        equal(true, Insensitive.tryGetDictionaryValue("d", "INTEGER", out Integer));
+        equal(false, Config.tryGetDictionaryValue("d", "integer", out Integer));
+    }
+
+    static void includeResolution()
+    {
+        Directory.CreateDirectory("bundle/nested");
+        File.WriteAllText("bundle/root.ini", "[INC:nested/child.ini]\n[INC:empty.ini]\n[INC:./empty.ini]\n");
+        File.WriteAllText("bundle/nested/child.ini", "[INC:leaf.ini]\n");
+        File.WriteAllText("bundle/leaf.ini", "[S]\nk=fixed\n");
+        File.WriteAllText("bundle/nested/leaf.ini", "[S]\nk=relative\n");
+        File.WriteAllText("bundle/empty.ini", "");
+        ConfigurationLoadOptions Options = new ConfigurationLoadOptions { IncludeBaseDirectory = "bundle" };
+        ConfigurationFile Fixed = new ConfigurationFile("bundle/root.ini", Options, false);
+        equal("fixed", get(Fixed, "s", "K"));
+        List<string> Expected = new List<string>();
+        foreach (string Name in new string[] { "root.ini", "nested/child.ini", "leaf.ini", "empty.ini" }) {
+            Expected.Add(Path.GetFullPath(Path.Combine("bundle", Name)));
+        }
+        Expected.Sort(StringComparer.Ordinal);
+        equal(String.Join("|", Expected.ToArray()), String.Join("|", Fixed.listLoadedFiles().ToArray()));
+        Fixed.listLoadedFiles().Clear();
+        equal(4, Fixed.listLoadedFiles().Count);
+        Options.IncludeBaseDirectory = "absent";
+        equal(4, Fixed.listLoadedFiles().Count);
+        List<string> Sources = new List<string>();
+        Options = new ConfigurationLoadOptions {
+            IncludeResolver = delegate(string Name, string SourcePath) {
+                Sources.Add(SourcePath);
+                return Path.Combine(Path.GetDirectoryName(SourcePath), Name);
+            }
+        };
+        ConfigurationFile Relative = new ConfigurationFile(new FileInfo("bundle/root.ini"), Options);
+        equal("relative", get(Relative, "S", "k"));
+        equal(Path.GetFullPath("bundle/root.ini"), Sources[0]);
+        equal(Path.GetFullPath("bundle/nested/child.ini"), Sources[1]);
+        equal(4, Relative.listLoadedFiles().Count);
+        using (MemoryStream Source = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("[INC:empty.ini]\n"))) {
+            ConfigurationFile StreamConfig = new ConfigurationFile(Source, new ConfigurationLoadOptions {
+                IncludeBaseDirectory = "bundle",
+                IncludeResolver = delegate(string Name, string Parent) { equal(null, Parent); return Name; }
+            });
+            equal(Path.GetFullPath("bundle/empty.ini"), StreamConfig.listLoadedFiles()[0]);
+            equal(true, Source.CanRead);
+        }
+        using (FileStream Source = File.OpenRead("bundle/root.ini")) {
+            ConfigurationFile StreamConfig = new ConfigurationFile(Source, Options);
+            equal(4, StreamConfig.listLoadedFiles().Count);
+            throws<InvalidOperationException>(delegate { StreamConfig.save(); });
+        }
+        equal(0, new ConfigurationFile().listLoadedFiles().Count);
+        string Absolute = Path.GetFullPath("bundle/empty.ini");
+        File.WriteAllText("absolute.ini", "[INC:" + Absolute + "]\n");
+        equal(2, new ConfigurationFile("absolute.ini", new ConfigurationLoadOptions { IncludeBaseDirectory = "absent" }).listLoadedFiles().Count);
+        File.WriteAllText("resolver.ini", "\n[INC:alias]\n");
+        Exception Cause = new IOException("Resolver failed.");
+        Exception Failure = captureError(delegate { new ConfigurationFile("resolver.ini", new ConfigurationLoadOptions {
+            IncludeResolver = delegate(string Name, string Parent) { throw Cause; }
+        }); });
+        sourceContext(Failure, Path.GetFullPath("resolver.ini"), 2);
+        equal(true, Object.ReferenceEquals(Cause, Failure.InnerException));
+        throws<ArgumentException>(delegate { new ConfigurationFile("resolver.ini", new ConfigurationLoadOptions {
+            IncludeResolver = delegate(string Name, string Parent) { return null; }
+        }); });
+        File.WriteAllText("bundle/cycle.ini", "[INC:alias]\n");
+        throws<FormatException>(delegate { new ConfigurationFile("bundle/cycle.ini", new ConfigurationLoadOptions {
+            IncludeResolver = delegate(string Name, string Parent) { return Parent; }
+        }); });
+        using (FileStream Source = File.OpenRead("bundle/cycle.ini")) {
+            throws<FormatException>(delegate { new ConfigurationFile(Source, new ConfigurationLoadOptions {
+                IncludeResolver = delegate(string Name, string Parent) { return Parent; }
+            }); });
+        }
+        Relative.save("flattened.ini");
+        equal(4, Relative.listLoadedFiles().Count);
+        equal(1, new ConfigurationFile("flattened.ini").listLoadedFiles().Count);
+    }
+
     static Exception captureError(Action Action)
     {
         try { Action(); }
@@ -1282,6 +1696,7 @@ class ConfigurationFileTests
     static void sourceContext(Exception Error, string Source, int Line)
     {
         equal(Source, (string)Error.Data["FilePath"]);
+        equal(Source, (string)Error.Data["SourceName"]);
         equal(Source == "<stream>" ? Source : Path.GetFileName(Source), (string)Error.Data["FileName"]);
         equal(Line, (int)Error.Data["LineNumber"]);
         equal(true, Error.Message.Contains(Source));
@@ -1663,6 +2078,10 @@ class ConfigurationFileTests
         test("trailing punctuation is literal in sections, dictionaries, tables and lists", literalTrailingPunctuation);
         test("name comparison is selectable and defaults to case-sensitive", nameCaseSensitivity);
         test("sections and dictionaries split at the first separator and preserve values through saving", firstSeparator);
+        test("parsed elements retain source locations across includes, named streams and snapshots", elementSources);
+        test("read-only views reject mutations and immutable snapshots retain all data", immutableSnapshots);
+        test("typed dictionary reads expose status and explicit conversion policies", typedDictionaryValues);
+        test("configurable include resolution and loaded dependency snapshots", includeResolution);
         test("load errors include source paths, filenames, line numbers and include chains", diagnosticContext);
         test("INCLUDE aliases load files from the current directory with isolated parser state", includeBlocks);
         test("getEncoded flag selects raw bytes or independent Base64 ASCII bytes", encodedFlag);

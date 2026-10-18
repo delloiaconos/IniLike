@@ -82,6 +82,13 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ConfigurationFile.cs" />
+    <Compile Include="SourceLocation.cs" />
+    <Compile Include="ConfigurationFile.Sources.cs" />
+    <Compile Include="ConfigurationFile.ReadOnly.cs" />
+    <Compile Include="ConfigurationSnapshot.cs" />
+    <Compile Include="ReadOnlyStringDictionary.cs" />
+    <Compile Include="ConfigurationLoadOptions.cs" />
+    <Compile Include="DictionaryConversionOptions.cs" />
     <Compile Include="NullParameterValueException.cs" />
     <Compile Include="ConfigurationFile.Parsing.cs" />
     <Compile Include="ConfigurationFile.Persistence.cs" />

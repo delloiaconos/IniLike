@@ -4,7 +4,7 @@ IniLike is a standalone C# library for reading INI-like configuration files orga
 It targets .NET Framework 3.5. 
 The namespace and assembly name are **ConfigurationFilesReader**, and the public class is `ConfigurationFilesReader.ConfigurationFile`.
 
-The implementation uses one partial class across nine source files in
+The implementation uses one partial class across eleven source files in
 `ConfigurationFilesReader/`: `ConfigurationFile.cs` holds shared settings and
 constructors; `ConfigurationFile.Parsing.cs` handles block identification and loading;
 `ConfigurationFile.Persistence.cs` handles dump/save and round-trip validation.
@@ -12,6 +12,10 @@ constructors; `ConfigurationFile.Parsing.cs` handles block identification and lo
 `ConfigurationFile.Dictionaries.cs`, `ConfigurationFile.Lists.cs`,
 `ConfigurationFile.Texts.cs` and `ConfigurationFile.Encoded.cs` hold the
 respective storage and access methods, including parameter methods in Sections.
+`ConfigurationFile.ReadOnly.cs` supplies collection views and snapshot creation;
+`ConfigurationSnapshot.cs` and `ReadOnlyStringDictionary.cs` define the immutable
+read API and the .NET 3.5 dictionary wrapper.
+`ConfigurationFile.Sources.cs` stores provenance and provides source-location lookups.
 
 The parser represents block kinds with the private `BlockTypes` enum and maps
 those kinds to their identifiers and aliases in the private readonly
@@ -87,7 +91,7 @@ second; 20; inactive
   header transitions and optional `END` markers as lists.
 - `[INCLUDE:filename.ini]` loads another configuration file into the current
   registry. `INC`, `INPUT`, `LINK` and `LOAD` are equivalent identifiers. Absolute
-  paths are accepted; relative paths (including nested includes) resolve from the
+  paths are accepted; by default, relative paths (including nested includes) resolve from the
   process's current working directory, not the including file's directory.
   Filenames are trimmed but are not quoted or stripped of punctuation.
   Included files use the same parser settings and have independent block state;
@@ -250,11 +254,138 @@ Includes also work when constructing from a stream. Loaded content is available
 through the existing getters and listing methods; there is no separate include
 registry. Full paths can be used when the working directory is not fixed.
 
+Pass `ConfigurationLoadOptions` after the source argument to select an INCLUDE
+policy before loading. String paths, `FileInfo` and streams accept these options,
+with an optional final `bool CaseSensitive`. Null options retain the defaults.
+The root filename itself is resolved normally, independently of INCLUDE options.
+
+```csharp
+var options = new ConfigurationLoadOptions {
+    IncludeBaseDirectory = @"/application/config"
+};
+var config = new ConfigurationFile("root.ini", options);
+List<string> files = config.listLoadedFiles();
+```
+
+`IncludeBaseDirectory` is normalized to an absolute path when construction starts.
+All relative includes, including nested ones, resolve against that same directory;
+absolute includes remain absolute. Options are copied before loading. Without an
+explicit base directory, relative paths retain the legacy working-directory behavior.
+The existing `DirectoryInfo` constructor's base directory still applies only to the
+root filename.
+
+For custom mapping, set `IncludeResolver` to a
+`Func<string, string, string>`. Its arguments are the trimmed INCLUDE filename and
+the including file's absolute path (null for an anonymous stream). It returns a
+nonempty file path. Relative results resolve against `IncludeBaseDirectory` when
+provided, otherwise the working directory. The resolver runs for every directive,
+including absolute filenames and nested includes. For paths relative to each
+including file, for example:
+
+```csharp
+var options = new ConfigurationLoadOptions {
+    IncludeResolver = (name, source) => System.IO.Path.Combine(
+        source == null ? @"/application/config" : System.IO.Path.GetDirectoryName(source), name)
+};
+var config = new ConfigurationFile("root.ini", options);
+```
+
+An empty directive still throws `FormatException`; a null/empty resolver result
+throws `ArgumentException`. Resolver exceptions retain their cause and the directive's
+source/line diagnostics. Resolved paths use the existing duplicate, cycle and depth
+checks; a resolver changes file selection, not parser rules or stream ownership.
+
+`listLoadedFiles()` returns a sorted, independent `List<string>` snapshot of unique
+absolute paths successfully parsed by this instance. It includes the root file for
+path and `FileStream` sources, plus all transitive includes, including empty files.
+Anonymous streams contribute only included files; empty in-memory configurations
+return an empty list. Repeated paths are deduplicated using ordinal comparison
+(case-insensitive on Windows), independently of `CaseSensitive`. Paths are normalized
+lexically; symbolic links are not resolved to filesystem identities. Repeated includes
+are still parsed and can cause duplicate-block errors. Construction failures throw
+instead of exposing a partial configuration or dependency list. Save/dump does not
+change this snapshot's source set or add output/validation temporary files. A saved,
+flattened configuration loaded afresh tracks only its own input files.
+
 Dump/save writes the combined data as ordinary blocks, replacing include directives
 with their loaded content. It never writes back to the included files automatically.
 The original save destination remains the top-level file; configurations loaded
 from a stream still need an explicit destination. As with other save overloads,
 explicitly choosing an included file as a destination replaces that file.
+
+### Source locations for parsed elements
+
+The immutable `SourceLocation` class identifies where an element was parsed:
+
+| Property | Meaning |
+| --- | --- |
+| `SourceName` | Absolute filename by default, a supplied stream label, or `<stream>`. |
+| `FilePath` | Absolute physical filename, or null for an anonymous/named in-memory stream. |
+| `LineNumber` | One-based physical line number, including blank/comment lines. Stream lines count from the starting read position. |
+
+These side-effect-free lookups are available on both `ConfigurationFile` and
+`ConfigurationSnapshot`:
+
+| Method | Location |
+| --- | --- |
+| `tryGetSectionSource(Name, out Location)` | Section header. |
+| `tryGetTableSource(Name, out Location)` | TABLE header. |
+| `tryGetListSource(Name, out Location)` | LIST header. |
+| `tryGetDictionarySource(Name, out Location)` | DICT header. |
+| `tryGetTextSource(Name, out Location)` | TEXT header. |
+| `tryGetEncodedSource(Name, out Location)` | ENCODED header. |
+| `tryGetParameterSource(Name, Key, out Location)` | Section parameter's key/value line. |
+| `tryGetDictionaryValueSource(Name, Key, out Location)` | Dictionary entry's key/value line. |
+| `tryGetTableRowSource(Name, Index, out Location)` | Table row's data line. |
+| `tryGetListItemSource(Name, Index, out Location)` | List item's data line. |
+
+All return true with a location when provenance is available, otherwise false
+and null. Names/keys use the selected case mode; null names/keys throw
+`ArgumentNullException`. Row/item indices are zero-based; negative or out-of-range
+indices return false. Empty parsed blocks retain header locations. Ignored lines,
+comments and END markers do not create metadata. INCLUDE is expanded rather than
+stored: imported elements point to their own file and line, including nested includes.
+
+```csharp
+SourceLocation location;
+if (config.tryGetDictionaryValueSource("CHANNELS", "x", out location))
+{
+    Console.WriteLine("{0}:{1}", location.SourceName, location.LineNumber);
+}
+```
+
+Locations describe original declarations, not edit history. Existing section or
+dictionary keys retain their declaration location when their value changes. A
+removed dictionary key returns false; reusing an originally parsed key retains
+that original declaration location. Newly created blocks/keys have no parsed
+location. Existing live `List<string>` accessors cannot notify the library of
+arbitrary edits: a row/item lookup succeeds only when the original string object
+still occupies its original index. Appending rows preserves earlier locations;
+new rows, replaced strings and rows shifted to other indices have no location at
+those indices. Restoring the original string object/index restores its location.
+Equal text in a newly allocated string does not establish provenance.
+
+Snapshots retain an independent copy of provenance, with immutable location
+objects, alongside their copied data. Edits to the original cannot change snapshot
+locations. Creating a snapshot after edits preserves the same availability rules.
+Saving does not reassign locations; reloading saved output assigns locations from
+that new source. Source metadata is not serialized by dump/save.
+
+To name an in-memory stream, set `ConfigurationLoadOptions.SourceName` before
+constructing the configuration:
+
+```csharp
+var options = new ConfigurationLoadOptions { SourceName = "uploaded settings" };
+var config = new ConfigurationFile(stream, options);
+```
+
+The label is preserved verbatim in element locations and syntax-error diagnostics.
+Null selects the default; empty/whitespace-only labels throw `ArgumentException`.
+This option applies only to the root stream. It can also override a `FileStream`'s
+display name while retaining its physical `FilePath`. Included files keep their
+own filenames. Labels never become filesystem paths, INCLUDE resolver source
+arguments, dependency entries, or save destinations; anonymous streams still pass
+null as the resolver's source-path argument. Stream ownership is unchanged.
 
 ### Loading diagnostics
 
@@ -274,9 +405,10 @@ The exception's `Data` dictionary also exposes the innermost error location:
 
 | Key | Value |
 | --- | --- |
-| `FilePath` | Absolute source path, or `<stream>` for a stream without a filename. |
-| `FileName` | Filename without directories, or `<stream>`. |
+| `FilePath` | Absolute physical path; for a stream without a filename, its supplied label or `<stream>`. |
+| `FileName` | Physical filename without directories, or the stream label / `<stream>`. |
 | `LineNumber` | One-based line number; `0` if the file could not be opened. |
+| `SourceName` | Innermost failing source's display name, honoring a supplied stream label. |
 
 A `FileStream` supplies its filename for diagnostics without becoming the original
 save destination. Stream line numbers are counted from the starting read position.
@@ -505,6 +637,136 @@ config.save();
 operate on sections only. Direct dictionary mutations do not trigger automatic
 creation or saving; call `save` explicitly. Dictionary names and keys are sorted
 ordinally for dump/save, and the same round-trip validation applies to their values.
+
+### Read-only views and immutable snapshots
+
+Use these accessors to share collections without permitting edits through the
+returned reference. Existing mutable accessors keep their behavior.
+
+| Accessor | Result |
+| --- | --- |
+| `getTableReadOnly(Name)` | Live `ReadOnlyCollection<string>` of table rows. |
+| `getListReadOnly(Name)` | Live `ReadOnlyCollection<string>` of list items. |
+| `getDictionaryReadOnly(Name)` | Live `ReadOnlyStringDictionary` of dictionary entries. |
+
+A **view** reflects later changes made through the configuration's mutable APIs.
+Mutation attempts through collection interfaces throw `NotSupportedException`;
+casting the wrapper cannot recover the original mutable collection. Dictionary
+keys and values also reject mutations. `ReadOnlyStringDictionary` supports
+indexing, `Count`, `Keys`, `Values`, enumeration, `containsKey` and `tryGetValue`,
+plus the standard generic `IDictionary<string,string>` read operations.
+Names follow the configuration's case mode. Missing blocks return empty read-only
+collections without creating data; use `containsTable`, `containsList` or
+`containsDictionary` to distinguish missing from existing empty blocks. Null names
+throw `ArgumentNullException`. These reads never save or create entries.
+
+Use `createSnapshot()` for independent, stable data:
+
+```csharp
+var liveRows = config.getTableReadOnly("ITEMS");
+ConfigurationSnapshot snapshot = config.createSnapshot();
+config.getTable("ITEMS").Add("another row");
+// liveRows reflects the addition; snapshot.getTable("ITEMS") remains unchanged.
+```
+
+A **snapshot** copies all stored sections, tables, lists, dictionaries, text, binary
+data and loaded-file paths in memory, preserving nulls, empty blocks, original
+spelling, case mode, row order and values that cannot be serialized. It performs
+no parsing, I/O, default creation or saving. It has no setters, mutable registry
+properties, or save methods. Changes to the original configuration cannot change
+an existing snapshot. It does not retain caller streams, file handles or resolver
+callbacks.
+
+`ConfigurationSnapshot` provides:
+
+- Read-only `CaseSensitive`; `containsSection/Table/List/Dictionary/Text/Encoded`,
+  `containsParameter`, and `containsDictionaryValue` presence checks.
+- `getTable` and `getList` returning `ReadOnlyCollection<string>`;
+  `getDictionary` and `getSection` returning `ReadOnlyStringDictionary`.
+  Missing blocks return empty read-only collections; presence checks distinguish
+  them from existing empty blocks.
+- `getText` and both `getEncoded` overloads with existing missing-block semantics.
+  Binary results are defensive byte-array copies: editing a returned array cannot
+  alter snapshot data.
+- `listSections/Tables/Lists/Dictionaries/Texts/Encoded/LoadedFiles` and both
+  `listParameters` overloads returning sorted read-only collections.
+- String and typed `tryGetParameter` and `tryGetDictionaryValue` overloads with
+  the same conversions and null behavior as the configuration. Typed dictionary
+  reads also support the overload taking conversion options and an output status.
+
+All snapshot collections reject edits, including through generic collection
+interfaces. Returned dictionary keys/values cannot alter snapshot storage.
+The implementation uses .NET Framework 3.5 collection interfaces and wrappers;
+no newer `IReadOnly*` interfaces or immutable-collection packages are required.
+After construction, snapshots can be shared for concurrent reads. Creating a
+snapshot or enumerating a live view while the original configuration is being
+modified requires caller synchronization, like other configuration operations.
+
+### Typed dictionary values
+
+`containsDictionaryValue(DictionaryName, Key)` tests entry presence, including a
+stored null. `tryGetDictionaryValue(DictionaryName, Key, out string Value)` returns
+raw text: true for present entries (including null/empty), false and null for missing
+entries. Names use the configuration's case mode; null names throw
+`ArgumentNullException`. Section parameter APIs remain separate.
+
+Typed `tryGetDictionaryValue` overloads support `bool`, `int`, `long`, `float` and
+`double`. They return true only on successful conversion. False resets the output
+to false/zero; it never substitutes a caller default. Use the status overload to
+distinguish missing entries from invalid values:
+
+```csharp
+var options = new DictionaryConversionOptions {
+    NumericCulture = System.Globalization.CultureInfo.GetCultureInfo("it-IT"),
+    DecimalSeparator = DecimalSeparatorPolicy.Culture,
+    BooleanValues = BooleanRepresentations.TrueFalse | BooleanRepresentations.YesNo,
+    AllowNonFinite = false
+};
+double value;
+DictionaryValueStatus status;
+if (config.tryGetDictionaryValue("CHANNELS", "x", options, out value, out status))
+{
+    // Use the converted value.
+}
+else if (status == DictionaryValueStatus.InvalidValue)
+{
+    // The entry exists, but its text cannot be converted under this policy.
+}
+```
+
+Each typed overload has these forms:
+
+- `(DictionaryName, Key, out Value)` uses the defaults below.
+- `(DictionaryName, Key, Options, out Value)` selects explicit policies.
+- `(DictionaryName, Key, Options, out Value, out Status)` also reports the result.
+
+`DictionaryValueStatus` is `Success`, `MissingDictionary`, `MissingKey`, `NullValue`
+or `InvalidValue`. Typed dictionary reads return false for stored nulls with
+`NullValue`; raw string reads still return true and null. Existing parameter reads
+retain their documented null exceptions and legacy conversions.
+
+`DictionaryConversionOptions` controls conversions independently of process culture:
+
+| Option | Default and behavior |
+| --- | --- |
+| `NumericCulture` | `CultureInfo.InvariantCulture`. Supplies numeric signs, decimal separator in Culture mode, and floating-point special symbols. Null is invalid. |
+| `DecimalSeparator` | `DotOrComma` accepts either decimal separator, rejecting text containing both. `Culture` uses the selected culture's decimal separator; `Dot` or `Comma` accepts only that separator. Applies to floating-point reads. |
+| `BooleanValues` | `TrueFalse \| OneZero`. Flags also offer `YesNo` and `OnOff`; combine to opt in, or use `None` to reject all forms. Comparisons are ordinal and case-insensitive. |
+| `AllowNonFinite` | false. When true, explicit culture-specific NaN and positive/negative infinity symbols are accepted for floats/doubles. Numeric overflow is still rejected. |
+
+All conversions trim surrounding whitespace. Integers use `NumberStyles.Integer`
+and enforce their destination type's bounds. Floating-point values allow signs,
+decimals and exponents (`NumberStyles.Float`); thousands/grouping separators are
+always rejected to avoid ambiguous decimal interpretation. Finite float overflow
+is rejected; normal rounding and underflow are permitted. Empty and malformed text
+return `InvalidValue`. Null options select defaults; unknown enum values/flag bits
+throw `ArgumentException`, and null `NumericCulture` throws `ArgumentNullException`.
+Options are validated even when an entry is absent.
+
+All these reads are side-effect-free, including with automatic creation/saving
+enabled. They never create dictionaries/entries, replace text, or save files.
+Policies apply only to these new dictionary accessors. Application schemas, domain
+ranges, table columns and cross-reference validation remain the caller's responsibility.
 
 Text blocks are accessed independently from sections and lists:
 

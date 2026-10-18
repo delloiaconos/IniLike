@@ -18,6 +18,14 @@ namespace ConfigurationFilesReader
 
         private readonly StringComparer NameComparer;
         private readonly FileInfo FilePath;
+        private readonly string IncludeBaseDirectory;
+        private readonly string StreamSourceName;
+        private readonly Func<string, string, string> IncludeResolver;
+
+        public List<string> listLoadedFiles()
+        {
+            return sortedNames(loadedFiles);
+        }
 
         public ConfigurationFile(string FileName)
             : this(FileName, true)
@@ -29,13 +37,33 @@ namespace ConfigurationFilesReader
         {
         }
 
+        public ConfigurationFile(string FileName, ConfigurationLoadOptions Options)
+            : this(new FileInfo(FileName), Options, true)
+        {
+        }
+
+        public ConfigurationFile(string FileName, ConfigurationLoadOptions Options, bool CaseSensitive)
+            : this(new FileInfo(FileName), Options, CaseSensitive)
+        {
+        }
+
         public ConfigurationFile(FileInfo FilePath)
             : this(FilePath, true)
         {
         }
 
         public ConfigurationFile(FileInfo FilePath, bool CaseSensitive)
-            : this(CaseSensitive)
+            : this(FilePath, null, CaseSensitive)
+        {
+        }
+
+        public ConfigurationFile(FileInfo FilePath, ConfigurationLoadOptions Options)
+            : this(FilePath, Options, true)
+        {
+        }
+
+        public ConfigurationFile(FileInfo FilePath, ConfigurationLoadOptions Options, bool CaseSensitive)
+            : this(Options, CaseSensitive)
         {
             if (FilePath == null) {
                 throw new ArgumentNullException("Expected 'FilePath' not null!");
@@ -51,7 +79,17 @@ namespace ConfigurationFilesReader
         }
 
         public ConfigurationFile(Stream Source, bool CaseSensitive)
-            : this(CaseSensitive)
+            : this(Source, null, CaseSensitive)
+        {
+        }
+
+        public ConfigurationFile(Stream Source, ConfigurationLoadOptions Options)
+            : this(Source, Options, true)
+        {
+        }
+
+        public ConfigurationFile(Stream Source, ConfigurationLoadOptions Options, bool CaseSensitive)
+            : this(Options, CaseSensitive)
         {
             if (Source == null) {
                 throw new ArgumentNullException("Source");
@@ -61,7 +99,14 @@ namespace ConfigurationFilesReader
             }
             using (StreamReader Reader = new StreamReader(new BorrowedReadStream(Source))) {
                 FileStream FileSource = Source as FileStream;
-                loadReader(Reader, FileSource == null ? null : Path.GetFullPath(FileSource.Name));
+                string SourcePath = FileSource == null ? null : Path.GetFullPath(FileSource.Name);
+                if (SourcePath != null) { loadingFiles.Add(SourcePath); }
+                try {
+                    loadReader(Reader, SourcePath, StreamSourceName ?? SourcePath);
+                    if (SourcePath != null) { loadedFiles.Add(SourcePath); }
+                } finally {
+                    if (SourcePath != null) { loadingFiles.Remove(SourcePath); }
+                }
             }
         }
 
@@ -81,7 +126,20 @@ namespace ConfigurationFilesReader
         }
 
         public ConfigurationFile(bool CaseSensitive)
+            : this((ConfigurationLoadOptions)null, CaseSensitive)
         {
+        }
+
+        private ConfigurationFile(ConfigurationLoadOptions Options, bool CaseSensitive)
+        {
+            if (Options != null) {
+                if (Options.SourceName != null && Options.SourceName.Trim().Length == 0) {
+                    throw new ArgumentException("SourceName must not be empty or whitespace.", "Options");
+                }
+                StreamSourceName = Options.SourceName;
+                IncludeBaseDirectory = Options.IncludeBaseDirectory == null ? null : Path.GetFullPath(Options.IncludeBaseDirectory);
+                IncludeResolver = Options.IncludeResolver;
+            }
             this.CaseSensitive = CaseSensitive;
             NameComparer = CaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
             dictSections = new Dictionary<string, strDictionary>(NameComparer);
