@@ -208,13 +208,12 @@ class ConfigurationFileTests
         ConfigurationFile cfg = new ConfigurationFile();
         equal(false, cfg.autoUpdateRegistry);
         equal(false, cfg.autoSaveRegistry);
-        foreach (string name in new string[] { "parSeparator", "parEndLineDelimiter" })
+        foreach (string name in new string[] { "parSeparator", "parComment" })
         {
             System.Reflection.FieldInfo field = typeof(ConfigurationFile).GetField(name);
             equal(true, field != null && field.IsInitOnly && !field.IsStatic);
         }
         equal("=", new string(cfg.parSeparator));
-        equal("", new string(cfg.parEndLineDelimiter));
         equal(false, cfg.checkSection("missing"));
         cfg.setParameter("S", "existing", "value");
         foreach (string section in new string[] { "missing", "S" })
@@ -1686,10 +1685,8 @@ class ConfigurationFileTests
         test("readonly array fields expose mutable elements without reloading", delegate {
             ConfigurationFile cfg = load("[S]\nk=value;\n");
             char[] separators = cfg.parSeparator;
-            char[] delimiters = cfg.parEndLineDelimiter;
             separators[0] = ':';
             equal(":", new string(cfg.parSeparator));
-            equal(0, delimiters.Length);
             equal("value;", get(cfg, "S", "k"));
         });
         Console.WriteLine("{0} passed, {1} failed; {2} assertions", passed, failed, assertions);

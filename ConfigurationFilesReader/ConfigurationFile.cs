@@ -11,8 +11,6 @@ namespace ConfigurationFilesReader
     {
         public readonly string[] parComment = { "##" };
         public readonly char[] parSeparator = { '=' };
-        // Retained for API compatibility; line endings no longer use delimiters.
-        public readonly char[] parEndLineDelimiter = new char[0];
         public bool autoUpdateRegistry { get; set; }
         public bool autoSaveRegistry { get; set; }
 

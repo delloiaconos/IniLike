@@ -297,7 +297,6 @@ classDiagram
         %% Shared settings and constructors
         +string[] parComment
         +char[] parSeparator
-        +char[] parEndLineDelimiter
         +bool autoUpdateRegistry
         +bool autoSaveRegistry
         +bool CaseSensitive
@@ -376,7 +375,7 @@ classDiagram
     InvalidOperationException <|-- NullParameterValueException
     ConfigurationFile ..> NullParameterValueException : throws on typed null reads without defaults
     note for NullParameterValueException "SectionName and ParameterName are read-only."
-    note for ConfigurationFile "Namespace: ConfigurationFilesReader. All three array fields are readonly. autoUpdateRegistry and autoSaveRegistry have get/set access and default to false. CaseSensitive is read-only and defaults to true."
+    note for ConfigurationFile "Namespace: ConfigurationFilesReader. Both array fields are readonly. autoUpdateRegistry and autoSaveRegistry have get/set access and default to false. CaseSensitive is read-only and defaults to true."
 ```
 
 File paths are stored internally as `System.IO.FileInfo`. 
@@ -631,7 +630,6 @@ Parameter listings contain names, not values.
 arrays. Their existing elements remain mutable, but construction loads the input
 immediately; changing them later does not reparse it. There is no public reload
 method or constructor option for custom prefixes or separators.
-`parEndLineDelimiter` is an empty, unused readonly array retained for API compatibility.
 `CaseSensitive` is selected at construction, as shown in [Usage](#usage).
 
 The two runtime properties default to false and are independent:
