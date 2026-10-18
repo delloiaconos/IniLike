@@ -21,7 +21,18 @@ the same capitalization as `Section`, `Table`, `List`, `Dictionary`, `Text` and
 `LOAD`); `BlockTypes.None` represents the state outside a block and is associated
 with the `END` marker.
 
-Documentation: [validator usage](ConfigurationValidator/README.md).
+Documentation: [validator usage](ConfigurationValidator/README.md),
+[Python library](ConfigurationFileReader.Python/README.md).
+
+## Python implementation
+
+`ConfigurationFileReader.Python` is a separate Python 3.9+ project implementing
+the same configuration format and library operations, with no runtime dependencies
+beyond the standard library. It exports `ConfigurationFileReader` and the alias
+`ConfigurationFile`. See its [guide](ConfigurationFileReader.Python/README.md) for
+installation, tuple-based try-reads, numeric type selection, and compatibility
+boundaries. Run `make test-python` to test it, including C# comparisons when Mono
+is available. The API and build instructions below describe the C# implementation.
 
 ## File format
 
@@ -698,7 +709,8 @@ make ms-build
 - `ms-build` is the default target: running `make` alone invokes MSBuild.
 - `x-build` explicitly uses the deprecated Mono xbuild tool: `make x-build`.
 - `clean` removes both projects' entire `bin` and `obj` directories, including Debug, Release, and stale build artifacts: `make clean`.
-- `test` builds the solution temporarily and runs library and console checks.
+- `test` builds the solution temporarily and runs C# library and console checks.
+- `test-python` runs the Python project tests and optional cross-language checks.
 - `test-examples` builds temporarily and validates every `examples/*.ini` file; see the
   [validator guide](ConfigurationValidator/README.md#validate-all-examples).
   Build and test default to Release; select Debug with `CONFIGURATION=Debug`, for example `make test CONFIGURATION=Debug`. 
