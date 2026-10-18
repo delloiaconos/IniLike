@@ -26,5 +26,23 @@ namespace ConfigurationFilesReader
             strTable Rows;
             return dictTables.TryGetValue(tablename, out Rows) ? Rows : new strTable();
         }
+
+        // Presence checks never create entries or write files.
+        public bool containsTable(string Name)
+        {
+            if (Name == null) { throw new ArgumentNullException("Name"); }
+            return dictTables.ContainsKey(Name);
+        }
+
+        // A missing block returns false and a null output; empty blocks return true.
+        public bool tryGetTable(string Name, out List<string> Rows)
+        {
+            if (Name == null) { throw new ArgumentNullException("Name"); }
+            Rows = null;
+            List<string> Stored;
+            if (!dictTables.TryGetValue(Name, out Stored)) { return false; }
+            Rows = Stored;
+            return true;
+        }
     }
 }

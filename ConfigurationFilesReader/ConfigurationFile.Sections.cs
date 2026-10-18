@@ -181,5 +181,105 @@ namespace ConfigurationFilesReader
             Names.Sort(StringComparer.Ordinal);
             return Names;
         }
+
+        // Presence checks never create entries or write files.
+        public bool containsSection(string Name)
+        {
+            if (Name == null) { throw new ArgumentNullException("Name"); }
+            return dictSections.ContainsKey(Name);
+        }
+
+        // A missing block returns false and a null output; empty blocks return true.
+        public bool tryGetSection(string Name, out Dictionary<string, string> Parameters)
+        {
+            if (Name == null) { throw new ArgumentNullException("Name"); }
+            Parameters = null;
+            Dictionary<string, string> Stored;
+            if (!dictSections.TryGetValue(Name, out Stored)) { return false; }
+            Parameters = new Dictionary<string, string>(Stored, NameComparer);
+            return true;
+        }
+
+        public bool containsParameter(string Section, string Parameter)
+        {
+            string Value;
+            return tryGetParameter(Section, Parameter, out Value);
+        }
+
+        // Presence is independent of value: a stored null still returns true.
+        public bool tryGetParameter(string Section, string Parameter, out string Value)
+        {
+            if (Section == null) { throw new ArgumentNullException("Section"); }
+            if (Parameter == null) { throw new ArgumentNullException("Parameter"); }
+            Value = null;
+            strDictionary Parameters;
+            return dictSections.TryGetValue(Section, out Parameters) &&
+                Parameters.TryGetValue(Parameter, out Value);
+        }
+
+        public bool tryGetParameter(string Section, string Parameter, out bool Value)
+        {
+            Value = false;
+            string Text;
+            if (!tryGetParameter(Section, Parameter, out Text) || Text == null) { return false; }
+            Text = Text.Trim();
+            if (Text == "1" || String.Equals(Text, "true", StringComparison.OrdinalIgnoreCase)) {
+                Value = true;
+                return true;
+            }
+            return Text == "0" || String.Equals(Text, "false", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Typed reads reject invalid, null and out-of-range values without mutation.
+        public bool tryGetParameter(string Section, string Parameter, out int Value)
+        {
+            Value = 0;
+            string Text;
+            if (!tryGetParameter(Section, Parameter, out Text) || Text == null) { return false; }
+            int Parsed;
+            if (!int.TryParse(Text.Trim(), NumberStyles.Integer,
+                CultureInfo.InvariantCulture, out Parsed)) { return false; }
+            Value = (int)Parsed;
+            return true;
+        }
+
+        // Typed reads reject invalid, null and out-of-range values without mutation.
+        public bool tryGetParameter(string Section, string Parameter, out long Value)
+        {
+            Value = 0;
+            string Text;
+            if (!tryGetParameter(Section, Parameter, out Text) || Text == null) { return false; }
+            long Parsed;
+            if (!long.TryParse(Text.Trim(), NumberStyles.Integer,
+                CultureInfo.InvariantCulture, out Parsed)) { return false; }
+            Value = (long)Parsed;
+            return true;
+        }
+
+        // Typed reads reject invalid, null and out-of-range values without mutation.
+        public bool tryGetParameter(string Section, string Parameter, out double Value)
+        {
+            Value = 0;
+            string Text;
+            if (!tryGetParameter(Section, Parameter, out Text) || Text == null) { return false; }
+            double Parsed;
+            if (!double.TryParse(Text.Trim().Replace(',', '.'), NumberStyles.Float | NumberStyles.AllowThousands,
+                CultureInfo.InvariantCulture, out Parsed) || Double.IsNaN(Parsed) || Double.IsInfinity(Parsed)) { return false; }
+            Value = (double)Parsed;
+            return true;
+        }
+
+        // Typed reads reject invalid, null and out-of-range values without mutation.
+        public bool tryGetParameter(string Section, string Parameter, out float Value)
+        {
+            Value = 0;
+            string Text;
+            if (!tryGetParameter(Section, Parameter, out Text) || Text == null) { return false; }
+            double Parsed;
+            if (!double.TryParse(Text.Trim().Replace(',', '.'), NumberStyles.Float | NumberStyles.AllowThousands,
+                CultureInfo.InvariantCulture, out Parsed) || Double.IsNaN(Parsed) || Double.IsInfinity(Parsed) || Parsed > float.MaxValue || Parsed < -float.MaxValue) { return false; }
+            Value = (float)Parsed;
+            return true;
+        }
     }
 }

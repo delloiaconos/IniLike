@@ -24,5 +24,23 @@ namespace ConfigurationFilesReader
             List<string> Items;
             return dictLists.TryGetValue(ListName, out Items) ? Items : new List<string>();
         }
+
+        // Presence checks never create entries or write files.
+        public bool containsList(string Name)
+        {
+            if (Name == null) { throw new ArgumentNullException("Name"); }
+            return dictLists.ContainsKey(Name);
+        }
+
+        // A missing block returns false and a null output; empty blocks return true.
+        public bool tryGetList(string Name, out List<string> Items)
+        {
+            if (Name == null) { throw new ArgumentNullException("Name"); }
+            Items = null;
+            List<string> Stored;
+            if (!dictLists.TryGetValue(Name, out Stored)) { return false; }
+            Items = Stored;
+            return true;
+        }
     }
 }

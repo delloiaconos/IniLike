@@ -1492,8 +1492,117 @@ class ConfigurationFileTests
         equal("[S]\nk=original\n", File.ReadAllText("config.ini"));
     }
 
+    static void explicitReads()
+    {
+        const string Source = "[SEC:Full]\nKey=value\n[SEC:Empty]\n[TBL:Full]\nrow\n[TBL:Empty]\n[LST:Full]\nitem\n[LST:Empty]\n[DICT:Full]\nKey=value\n[DICT:Empty]\n[TXT:Full]\ntext\n[END]\n[TXT:Empty]\n[END]\n[ENC:Full]\nZg==\n[ENC:Empty]\n";
+        foreach (bool Sensitive in new bool[] { true, false }) {
+            File.WriteAllText("explicit.ini", Source);
+            ConfigurationFile Config = new ConfigurationFile("explicit.ini", Sensitive);
+            Config.autoUpdateRegistry = true;
+            Config.autoSaveRegistry = true;
+            foreach (string Kind in new string[] { "Section", "Table", "List", "Dictionary", "Text", "Encoded" }) {
+                Type ValueType = Kind == "Section" || Kind == "Dictionary" ? typeof(Dictionary<string, string>) :
+                    Kind == "Text" ? typeof(string) : Kind == "Encoded" ? typeof(byte[]) : typeof(List<string>);
+                System.Reflection.MethodInfo Contains = typeof(ConfigurationFile).GetMethod("contains" + Kind);
+                System.Reflection.MethodInfo Read = typeof(ConfigurationFile).GetMethod("tryGet" + Kind,
+                    new Type[] { typeof(string), ValueType.MakeByRefType() });
+                foreach (string Name in new string[] { "Full", "Empty", "Missing", "full" }) {
+                    bool Expected = Name == "Full" || Name == "Empty" || (Name == "full" && !Sensitive);
+                    equal(Expected, (bool)Contains.Invoke(Config, new object[] { Name }));
+                    object[] Args = { Name, null };
+                    equal(Expected, (bool)Read.Invoke(Config, Args));
+                    equal(Expected, Args[1] != null);
+                    if (Name == "Empty") {
+                        equal(0, Kind == "Text" ? ((string)Args[1]).Length : ((System.Collections.ICollection)Args[1]).Count);
+                    }
+                }
+                try { Contains.Invoke(Config, new object[] { null }); throw new Exception("Null name accepted"); }
+                catch (System.Reflection.TargetInvocationException Error) { equal(typeof(ArgumentNullException), Error.InnerException.GetType()); }
+                try { Read.Invoke(Config, new object[] { null, null }); throw new Exception("Null name accepted"); }
+                catch (System.Reflection.TargetInvocationException Error) { equal(typeof(ArgumentNullException), Error.InnerException.GetType()); }
+            }
+            string Text;
+            equal(true, Config.containsParameter("Full", "Key"));
+            equal(!Sensitive, Config.containsParameter("full", "key"));
+            equal(false, Config.containsParameter("Missing", "Key"));
+            equal(false, Config.tryGetParameter("Empty", "Missing", out Text));
+            equal<string>(null, Text);
+            equal(true, Config.tryGetParameter("Full", "Key", out Text));
+            equal("value", Text);
+            List<string> Rows;
+            Config.tryGetTable("Empty", out Rows);
+            Rows.Add("new row");
+            equal("new row", Config.getTable("Empty")[0]);
+            Config.tryGetList("Empty", out Rows);
+            Rows.Add("new item");
+            equal("new item", Config.getList("Empty")[0]);
+            Dictionary<string, string> Entries;
+            Config.tryGetDictionary("Empty", out Entries);
+            Entries["Key"] = "new value";
+            equal("new value", Config.getDictionary("Empty")["Key"]);
+            Config.tryGetSection("Full", out Entries);
+            Entries["Key"] = "detached";
+            equal("value", get(Config, "Full", "Key"));
+            byte[] Bytes;
+            equal(true, Config.tryGetEncoded("Full", out Bytes));
+            Bytes[0] = 0;
+            equal((byte)102, Config.getEncoded("Full")[0]);
+            equal(true, Config.tryGetEncoded("Full", true, out Bytes));
+            equal("Zg==", System.Text.Encoding.ASCII.GetString(Bytes));
+            equal(false, Config.tryGetEncoded("Missing", true, out Bytes));
+            equal<byte[]>(null, Bytes);
+            equal(Source, File.ReadAllText("explicit.ini"));
+            equal(2, Config.listSections().Count);
+        }
+        ConfigurationFile Memory = new ConfigurationFile { autoUpdateRegistry = true };
+        Memory.setParameter("S", "null", null);
+        Memory.setParameter("S", "empty", "");
+        Memory.autoSaveRegistry = true;
+        string Raw;
+        equal(true, Memory.tryGetParameter("S", "null", out Raw));
+        equal<string>(null, Raw);
+        equal(true, Memory.containsParameter("S", "null"));
+        equal(true, Memory.tryGetParameter("S", "empty", out Raw));
+        equal("", Raw);
+        foreach (string Key in new string[] { "null", "empty", "missing" }) {
+            bool B; int I; long L; float F; double D;
+            equal(false, Memory.tryGetParameter("S", Key, out B)); equal(false, B);
+            equal(false, Memory.tryGetParameter("S", Key, out I)); equal(0, I);
+            equal(false, Memory.tryGetParameter("S", Key, out L)); equal(0L, L);
+            equal(false, Memory.tryGetParameter("S", Key, out F)); equal(0f, F);
+            equal(false, Memory.tryGetParameter("S", Key, out D)); equal(0.0, D);
+        }
+        throws<ArgumentNullException>(delegate { Memory.tryGetParameter("missing", null, out Raw); });
+        throws<ArgumentNullException>(delegate { Memory.containsParameter(null, "k"); });
+        equal(2, Memory.listParameters("S").Count);
+        Memory.autoSaveRegistry = false;
+        foreach (string Culture in new string[] { "en-US", "it-IT", "tr-TR" }) {
+            CultureInfo Original = CultureInfo.CurrentCulture;
+            try {
+                System.Threading.Thread.CurrentThread.CurrentCulture = new CultureInfo(Culture);
+                bool B; int I; long L; float F; double D;
+                Memory.setParameter("S", "v", " TrUe "); equal(true, Memory.tryGetParameter("S", "v", out B)); equal(true, B);
+                Memory.setParameter("S", "v", "0"); equal(true, Memory.tryGetParameter("S", "v", out B)); equal(false, B);
+                Memory.setParameter("S", "v", "yes"); equal(false, Memory.tryGetParameter("S", "v", out B));
+                Memory.setParameter("S", "v", "2147483648"); equal(false, Memory.tryGetParameter("S", "v", out I)); equal(0, I);
+                equal(true, Memory.tryGetParameter("S", "v", out L)); equal(2147483648L, L);
+                Memory.setParameter("S", "v", "2147483647"); equal(true, Memory.tryGetParameter("S", "v", out I)); equal(int.MaxValue, I);
+                Memory.setParameter("S", "v", "9223372036854775808"); equal(false, Memory.tryGetParameter("S", "v", out L));
+                Memory.setParameter("S", "v", "1,25"); equal(true, Memory.tryGetParameter("S", "v", out D)); equal(1.25, D);
+                equal(true, Memory.tryGetParameter("S", "v", out F)); equal(1.25f, F);
+                Memory.setParameter("S", "v", "1e100"); equal(false, Memory.tryGetParameter("S", "v", out F)); equal(0f, F);
+                foreach (string Invalid in new string[] { "NaN", "Infinity", "-Infinity", "1e999", "invalid" }) {
+                    Memory.setParameter("S", "v", Invalid);
+                    equal(false, Memory.tryGetParameter("S", "v", out D)); equal(0.0, D);
+                    equal(false, Memory.tryGetParameter("S", "v", out F)); equal(0f, F);
+                }
+            } finally { System.Threading.Thread.CurrentThread.CurrentCulture = Original; }
+        }
+    }
+
     static int Main()
     {
+        test("explicit reads distinguish missing, empty, null and invalid values without side effects", explicitReads);
         test("inline comments apply globally except raw TEXT content", inlineComments);
         test("trailing punctuation is literal in sections, dictionaries, tables and lists", literalTrailingPunctuation);
         test("name comparison is selectable and defaults to case-sensitive", nameCaseSensitivity);

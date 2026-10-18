@@ -43,5 +43,31 @@ namespace ConfigurationFilesReader
                 throw new FormatException("Invalid Base64 data in block '" + BlockName + "'.", Error);
             }
         }
+
+        // Presence checks never create entries or write files.
+        public bool containsEncoded(string Name)
+        {
+            if (Name == null) { throw new ArgumentNullException("Name"); }
+            return dictEncoded.ContainsKey(Name);
+        }
+
+        // A missing block returns false and a null output; empty blocks return true.
+        public bool tryGetEncoded(string Name, out byte[] Data)
+        {
+            if (Name == null) { throw new ArgumentNullException("Name"); }
+            Data = null;
+            byte[] Stored;
+            if (!dictEncoded.TryGetValue(Name, out Stored)) { return false; }
+            Data = (byte[])Stored.Clone();
+            return true;
+        }
+
+        // Select a decoded copy or canonical Base64 ASCII bytes.
+        public bool tryGetEncoded(string Name, bool Encoded, out byte[] Data)
+        {
+            if (!tryGetEncoded(Name, out Data)) { return false; }
+            if (Encoded) { Data = Encoding.ASCII.GetBytes(Convert.ToBase64String(Data)); }
+            return true;
+        }
     }
 }
