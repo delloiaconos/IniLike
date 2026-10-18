@@ -11,9 +11,7 @@ namespace ConfigurationFilesReader
         // Return a sorted snapshot of binary block names.
         public List<string> listEncoded()
         {
-            List<string> Names = new List<string>(dictEncoded.Keys);
-            Names.Sort(StringComparer.Ordinal);
-            return Names;
+            return sortedNames(dictEncoded.Keys);
         }
 
         // Return an independent copy of decoded bytes, or an empty array when missing.
@@ -29,10 +27,7 @@ namespace ConfigurationFilesReader
                 throw new ArgumentNullException("BlockName");
             }
             byte[] Data;
-            if (!dictEncoded.TryGetValue(BlockName, out Data)) {
-                return new byte[0];
-            }
-            return encoded ? Encoding.ASCII.GetBytes(Convert.ToBase64String(Data)) : (byte[])Data.Clone();
+            return tryGetEncoded(BlockName, encoded, out Data) ? Data : new byte[0];
         }
 
         private static byte[] decodeBase64(string BlockName, string Encoded)
@@ -54,19 +49,17 @@ namespace ConfigurationFilesReader
         // A missing block returns false and a null output; empty blocks return true.
         public bool tryGetEncoded(string Name, out byte[] Data)
         {
-            if (Name == null) { throw new ArgumentNullException("Name"); }
-            Data = null;
-            byte[] Stored;
-            if (!dictEncoded.TryGetValue(Name, out Stored)) { return false; }
-            Data = (byte[])Stored.Clone();
-            return true;
+            return tryGetEncoded(Name, false, out Data);
         }
 
         // Select a decoded copy or canonical Base64 ASCII bytes.
         public bool tryGetEncoded(string Name, bool Encoded, out byte[] Data)
         {
-            if (!tryGetEncoded(Name, out Data)) { return false; }
-            if (Encoded) { Data = Encoding.ASCII.GetBytes(Convert.ToBase64String(Data)); }
+            if (Name == null) { throw new ArgumentNullException("Name"); }
+            Data = null;
+            byte[] Stored;
+            if (!dictEncoded.TryGetValue(Name, out Stored)) { return false; }
+            Data = Encoded ? Encoding.ASCII.GetBytes(Convert.ToBase64String(Stored)) : (byte[])Stored.Clone();
             return true;
         }
     }

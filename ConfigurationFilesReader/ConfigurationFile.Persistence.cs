@@ -6,7 +6,6 @@ using System.Text;
 namespace ConfigurationFilesReader
 {
     using strDictionary = Dictionary<string, string>;
-    using strTable = List<string>;
 
     public partial class ConfigurationFile
     {
@@ -142,79 +141,47 @@ namespace ConfigurationFilesReader
             }
         }
 
-        // Validate serialized data with the same parser used by callers.
+        // Compare names using the registry comparers and values without normalization.
         private bool hasSameData(ConfigurationFile Other)
         {
-            if (dictSections.Count != Other.dictSections.Count || dictTables.Count != Other.dictTables.Count || dictLists.Count != Other.dictLists.Count || dictDictionaries.Count != Other.dictDictionaries.Count || dictTexts.Count != Other.dictTexts.Count || dictEncoded.Count != Other.dictEncoded.Count) {
-                return false;
-            }
-            foreach (KeyValuePair<string, strDictionary> SecName in dictSections) {
-                strDictionary Parameters;
-                if (!Other.dictSections.TryGetValue(SecName.Key, out Parameters) || SecName.Value.Count != Parameters.Count) {
+            return hasSameBlocks(dictSections, Other.dictSections, hasSameParameters) &&
+                hasSameBlocks(dictDictionaries, Other.dictDictionaries, hasSameParameters) &&
+                hasSameBlocks(dictTables, Other.dictTables, hasSameRows) &&
+                hasSameBlocks(dictLists, Other.dictLists, hasSameRows) &&
+                hasSameBlocks(dictTexts, Other.dictTexts, hasSameRows) &&
+                hasSameBlocks(dictEncoded, Other.dictEncoded,
+                    delegate(byte[] Left, byte[] Right) { return hasSameSequence(Left, Right); });
+        }
+
+        private static bool hasSameBlocks<T>(Dictionary<string, T> Left,
+            Dictionary<string, T> Right, Func<T, T, bool> EqualValues)
+        {
+            if (Left.Count != Right.Count) { return false; }
+            foreach (KeyValuePair<string, T> Entry in Left) {
+                T Value;
+                if (!Right.TryGetValue(Entry.Key, out Value) || !EqualValues(Entry.Value, Value)) {
                     return false;
                 }
-                foreach (KeyValuePair<string, string> Parameter in SecName.Value) {
-                    string Value;
-                    if (!Parameters.TryGetValue(Parameter.Key, out Value) || Parameter.Value != Value) {
-                        return false;
-                    }
-                }
             }
-            foreach (KeyValuePair<string, strTable> Table in dictTables) {
-                strTable Rows;
-                if (!Other.dictTables.TryGetValue(Table.Key, out Rows) || Table.Value.Count != Rows.Count) {
-                    return false;
-                }
-                for (int Index = 0; Index < Rows.Count; Index++) {
-                    if (Table.Value[Index] != Rows[Index]) {
-                        return false;
-                    }
-                }
-            }
-            foreach (KeyValuePair<string, List<string>> List in dictLists) {
-                List<string> Items;
-                if (!Other.dictLists.TryGetValue(List.Key, out Items) || List.Value.Count != Items.Count) {
-                    return false;
-                }
-                for (int Index = 0; Index < Items.Count; Index++) {
-                    if (List.Value[Index] != Items[Index]) {
-                        return false;
-                    }
-                }
-            }
-            foreach (KeyValuePair<string, List<string>> Text in dictTexts) {
-                List<string> Lines;
-                if (!Other.dictTexts.TryGetValue(Text.Key, out Lines) || Text.Value.Count != Lines.Count) {
-                    return false;
-                }
-                for (int Index = 0; Index < Lines.Count; Index++) {
-                    if (Text.Value[Index] != Lines[Index]) {
-                        return false;
-                    }
-                }
-            }
-            foreach (KeyValuePair<string, byte[]> Block in dictEncoded) {
-                byte[] Data;
-                if (!Other.dictEncoded.TryGetValue(Block.Key, out Data) || Block.Value.Length != Data.Length) {
-                    return false;
-                }
-                for (int Index = 0; Index < Data.Length; Index++) {
-                    if (Block.Value[Index] != Data[Index]) {
-                        return false;
-                    }
-                }
-            }
-            foreach (KeyValuePair<string, strDictionary> Dictionary in dictDictionaries) {
-                strDictionary Entries;
-                if (!Other.dictDictionaries.TryGetValue(Dictionary.Key, out Entries) || Dictionary.Value.Count != Entries.Count) {
-                    return false;
-                }
-                foreach (KeyValuePair<string, string> Entry in Dictionary.Value) {
-                    string Value;
-                    if (!Entries.TryGetValue(Entry.Key, out Value) || Entry.Value != Value) {
-                        return false;
-                    }
-                }
+            return true;
+        }
+
+        private static bool hasSameParameters(strDictionary Left, strDictionary Right)
+        {
+            return hasSameBlocks(Left, Right,
+                delegate(string First, string Second) { return First == Second; });
+        }
+
+        private static bool hasSameRows(List<string> Left, List<string> Right)
+        {
+            return hasSameSequence(Left, Right);
+        }
+
+        private static bool hasSameSequence<T>(IList<T> Left, IList<T> Right)
+        {
+            if (Left.Count != Right.Count) { return false; }
+            for (int Index = 0; Index < Left.Count; Index++) {
+                if (!EqualityComparer<T>.Default.Equals(Left[Index], Right[Index])) { return false; }
             }
             return true;
         }

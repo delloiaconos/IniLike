@@ -10,9 +10,7 @@ namespace ConfigurationFilesReader
         // Return a sorted snapshot of text block names.
         public List<string> listTexts()
         {
-            List<string> Names = new List<string>(dictTexts.Keys);
-            Names.Sort(StringComparer.Ordinal);
-            return Names;
+            return sortedNames(dictTexts.Keys);
         }
 
         // Join raw lines with LF; do not create missing blocks or save.
@@ -21,8 +19,8 @@ namespace ConfigurationFilesReader
             if (TextName == null) {
                 throw new ArgumentNullException("TextName");
             }
-            List<string> Lines;
-            return dictTexts.TryGetValue(TextName, out Lines) ? String.Join("\n", Lines.ToArray()) : "";
+            string Text;
+            return tryGetText(TextName, out Text) ? Text : "";
         }
 
         // Presence checks never create entries or write files.

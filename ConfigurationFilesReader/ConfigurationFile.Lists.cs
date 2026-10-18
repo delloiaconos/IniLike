@@ -10,9 +10,7 @@ namespace ConfigurationFilesReader
         // Return a sorted snapshot of list names, excluding sections and tables.
         public List<string> listLists()
         {
-            List<string> Names = new List<string>(dictLists.Keys);
-            Names.Sort(StringComparer.Ordinal);
-            return Names;
+            return sortedNames(dictLists.Keys);
         }
 
         // Return the live list, or an unattached empty list when missing.
@@ -22,7 +20,7 @@ namespace ConfigurationFilesReader
                 throw new ArgumentNullException("ListName");
             }
             List<string> Items;
-            return dictLists.TryGetValue(ListName, out Items) ? Items : new List<string>();
+            return tryGetList(ListName, out Items) ? Items : new List<string>();
         }
 
         // Presence checks never create entries or write files.
@@ -36,11 +34,7 @@ namespace ConfigurationFilesReader
         public bool tryGetList(string Name, out List<string> Items)
         {
             if (Name == null) { throw new ArgumentNullException("Name"); }
-            Items = null;
-            List<string> Stored;
-            if (!dictLists.TryGetValue(Name, out Stored)) { return false; }
-            Items = Stored;
-            return true;
+            return dictLists.TryGetValue(Name, out Items);
         }
     }
 }

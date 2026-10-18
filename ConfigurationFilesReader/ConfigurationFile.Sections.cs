@@ -77,22 +77,16 @@ namespace ConfigurationFilesReader
         // Get a parameter value or use the default when missing.
         public string getParameter(string SecName, string ParName, string DefaultVal )
         {
-            if (checkSection(SecName)) {
-                strDictionary sectParameters = dictSections[SecName];
-                if (sectParameters.ContainsKey(ParName)) {
-                    return sectParameters[ParName];
-                } else {
-                    if (autoUpdateRegistry) {
-                        addParameter(SecName, ParName, DefaultVal);
-                    }
-                    return DefaultVal;
-                }
-            } else {
-                if (autoUpdateRegistry) {
-                    addParameter(SecName, ParName, DefaultVal);
-                }
-                return DefaultVal;
+            strDictionary Parameters;
+            string Value;
+            if (dictSections.TryGetValue(SecName, out Parameters) &&
+                Parameters.TryGetValue(ParName, out Value)) {
+                return Value;
             }
+            if (autoUpdateRegistry) {
+                addParameter(SecName, ParName, DefaultVal);
+            }
+            return DefaultVal;
         }
 
         // Get a boolean parameter.
@@ -124,7 +118,7 @@ namespace ConfigurationFilesReader
         // Get a float parameter.
         public float getParameter(string SecName, string ParName, float DefaultVal)
         {
-            return (float)((double)getParameter(SecName, ParName, (double)DefaultVal));
+            return (float)getParameter(SecName, ParName, (double)DefaultVal);
         }
 
         // Get a long parameter.
@@ -147,15 +141,13 @@ namespace ConfigurationFilesReader
         // Get an integer parameter.
         public int getParameter(string SecName, string ParName, int DefaultVal)
         {
-            return (int)((long)getParameter(SecName, ParName, (long)DefaultVal));
+            return (int)getParameter(SecName, ParName, (long)DefaultVal);
         }
 
         // Return a sorted snapshot of section names, excluding tables.
         public List<string> listSections()
         {
-            List<string> Names = new List<string>(dictSections.Keys);
-            Names.Sort(StringComparer.Ordinal);
-            return Names;
+            return sortedNames(dictSections.Keys);
         }
 
         // Return a sorted snapshot of parameter names in a section.
@@ -168,9 +160,7 @@ namespace ConfigurationFilesReader
             if (!dictSections.TryGetValue(SecName, out Parameters)) {
                 return new List<string>();
             }
-            List<string> Names = new List<string>(Parameters.Keys);
-            Names.Sort(StringComparer.Ordinal);
-            return Names;
+            return sortedNames(Parameters.Keys);
         }
 
         // Return distinct parameter names across all sections, sorted ordinally.
@@ -180,9 +170,7 @@ namespace ConfigurationFilesReader
             foreach (strDictionary Parameters in dictSections.Values)
                 foreach (string Name in Parameters.Keys)
                     UniqueNames.Add(Name);
-            List<string> Names = new List<string>(UniqueNames);
-            Names.Sort(StringComparer.Ordinal);
-            return Names;
+            return sortedNames(UniqueNames);
         }
 
         // Presence checks never create entries or write files.
@@ -224,8 +212,7 @@ namespace ConfigurationFilesReader
         {
             Value = false;
             string Text;
-            if (!tryGetParameter(Section, Parameter, out Text)) { return false; }
-            if (Text == null) { throw new NullParameterValueException(Section, Parameter); }
+            if (!tryGetTypedText(Section, Parameter, out Text)) { return false; }
             Text = Text.Trim();
             if (Text == "1" || String.Equals(Text, "true", StringComparison.OrdinalIgnoreCase)) {
                 Value = true;
@@ -239,12 +226,11 @@ namespace ConfigurationFilesReader
         {
             Value = 0;
             string Text;
-            if (!tryGetParameter(Section, Parameter, out Text)) { return false; }
-            if (Text == null) { throw new NullParameterValueException(Section, Parameter); }
+            if (!tryGetTypedText(Section, Parameter, out Text)) { return false; }
             int Parsed;
             if (!int.TryParse(Text.Trim(), NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out Parsed)) { return false; }
-            Value = (int)Parsed;
+            Value = Parsed;
             return true;
         }
 
@@ -253,12 +239,11 @@ namespace ConfigurationFilesReader
         {
             Value = 0;
             string Text;
-            if (!tryGetParameter(Section, Parameter, out Text)) { return false; }
-            if (Text == null) { throw new NullParameterValueException(Section, Parameter); }
+            if (!tryGetTypedText(Section, Parameter, out Text)) { return false; }
             long Parsed;
             if (!long.TryParse(Text.Trim(), NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out Parsed)) { return false; }
-            Value = (long)Parsed;
+            Value = Parsed;
             return true;
         }
 
@@ -267,12 +252,11 @@ namespace ConfigurationFilesReader
         {
             Value = 0;
             string Text;
-            if (!tryGetParameter(Section, Parameter, out Text)) { return false; }
-            if (Text == null) { throw new NullParameterValueException(Section, Parameter); }
+            if (!tryGetTypedText(Section, Parameter, out Text)) { return false; }
             double Parsed;
             if (!double.TryParse(Text.Trim().Replace(',', '.'), NumberStyles.Float | NumberStyles.AllowThousands,
                 CultureInfo.InvariantCulture, out Parsed) || Double.IsNaN(Parsed) || Double.IsInfinity(Parsed)) { return false; }
-            Value = (double)Parsed;
+            Value = Parsed;
             return true;
         }
 
@@ -280,13 +264,18 @@ namespace ConfigurationFilesReader
         public bool tryGetParameter(string Section, string Parameter, out float Value)
         {
             Value = 0;
-            string Text;
+            double Parsed;
+            if (!tryGetParameter(Section, Parameter, out Parsed) ||
+                Parsed > float.MaxValue || Parsed < -float.MaxValue) { return false; }
+            Value = (float)Parsed;
+            return true;
+        }
+
+        // Typed reads share null handling; string reads still expose stored nulls.
+        private bool tryGetTypedText(string Section, string Parameter, out string Text)
+        {
             if (!tryGetParameter(Section, Parameter, out Text)) { return false; }
             if (Text == null) { throw new NullParameterValueException(Section, Parameter); }
-            double Parsed;
-            if (!double.TryParse(Text.Trim().Replace(',', '.'), NumberStyles.Float | NumberStyles.AllowThousands,
-                CultureInfo.InvariantCulture, out Parsed) || Double.IsNaN(Parsed) || Double.IsInfinity(Parsed) || Parsed > float.MaxValue || Parsed < -float.MaxValue) { return false; }
-            Value = (float)Parsed;
             return true;
         }
     }

@@ -12,9 +12,7 @@ namespace ConfigurationFilesReader
         // Return a sorted snapshot of table names, excluding sections.
         public List<string> listTables()
         {
-            List<string> Names = new List<string>(dictTables.Keys);
-            Names.Sort(StringComparer.Ordinal);
-            return Names;
+            return sortedNames(dictTables.Keys);
         }
 
         // Return the live rows, or an unattached empty list when missing.
@@ -24,7 +22,7 @@ namespace ConfigurationFilesReader
                 throw new ArgumentNullException("tablename");
             }
             strTable Rows;
-            return dictTables.TryGetValue(tablename, out Rows) ? Rows : new strTable();
+            return tryGetTable(tablename, out Rows) ? Rows : new strTable();
         }
 
         // Presence checks never create entries or write files.
@@ -38,11 +36,7 @@ namespace ConfigurationFilesReader
         public bool tryGetTable(string Name, out List<string> Rows)
         {
             if (Name == null) { throw new ArgumentNullException("Name"); }
-            Rows = null;
-            List<string> Stored;
-            if (!dictTables.TryGetValue(Name, out Stored)) { return false; }
-            Rows = Stored;
-            return true;
+            return dictTables.TryGetValue(Name, out Rows);
         }
     }
 }

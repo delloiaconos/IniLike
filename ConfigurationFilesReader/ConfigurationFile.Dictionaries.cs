@@ -12,9 +12,7 @@ namespace ConfigurationFilesReader
         // Return a sorted snapshot of dictionary names.
         public List<string> listDictionaries()
         {
-            List<string> Names = new List<string>(dictDictionaries.Keys);
-            Names.Sort(StringComparer.Ordinal);
-            return Names;
+            return sortedNames(dictDictionaries.Keys);
         }
 
         // Return the live dictionary, or an unattached empty dictionary when missing.
@@ -24,7 +22,7 @@ namespace ConfigurationFilesReader
                 throw new ArgumentNullException("DictionaryName");
             }
             strDictionary Entries;
-            return dictDictionaries.TryGetValue(DictionaryName, out Entries) ? Entries : new strDictionary(NameComparer);
+            return tryGetDictionary(DictionaryName, out Entries) ? Entries : new strDictionary(NameComparer);
         }
 
         // Presence checks never create entries or write files.
@@ -38,11 +36,7 @@ namespace ConfigurationFilesReader
         public bool tryGetDictionary(string Name, out Dictionary<string, string> Entries)
         {
             if (Name == null) { throw new ArgumentNullException("Name"); }
-            Entries = null;
-            Dictionary<string, string> Stored;
-            if (!dictDictionaries.TryGetValue(Name, out Stored)) { return false; }
-            Entries = Stored;
-            return true;
+            return dictDictionaries.TryGetValue(Name, out Entries);
         }
     }
 }

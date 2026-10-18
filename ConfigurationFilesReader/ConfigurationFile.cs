@@ -98,6 +98,14 @@ namespace ConfigurationFilesReader
             dictEncoded = new Dictionary<string, byte[]>(NameComparer);
         }
 
+        // Keep listing order ordinal regardless of the lookup comparer.
+        private static List<string> sortedNames(IEnumerable<string> Names)
+        {
+            List<string> Result = new List<string>(Names);
+            Result.Sort(StringComparer.Ordinal);
+            return Result;
+        }
+
         private static FileInfo combinePath(DirectoryInfo BaseDirectory, string FileName)
         {
             if (BaseDirectory == null) {
