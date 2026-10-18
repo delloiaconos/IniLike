@@ -41,13 +41,7 @@ namespace ConfigurationFilesReader
                 throw new ArgumentNullException("Expected 'FilePath' not null!");
             }
             this.FilePath = FilePath;
-            if (!this.FilePath.Exists)
-            {
-                throw withSourceContext(new System.Exception("File '" + FilePath.FullName + "' not found."), FilePath.FullName, 0);
-            } else if (!loadFile())
-            {
-                throw withSourceContext(new System.Exception("Unable to load file '" + FilePath.FullName + "'."), FilePath.FullName, 0);
-            }
+            loadFile();
         }
 
         // Read from the current position without taking ownership of the stream.

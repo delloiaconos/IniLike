@@ -70,15 +70,10 @@ namespace ConfigurationFilesReader
             return Line.Substring(0, CommentStart);
         }
 
-        // Load the configuration file content.
-        private bool loadFile()
+        // Open directly so filesystem failures retain their standard exception types.
+        private void loadFile()
         {
-            if (!File.Exists(FilePath.FullName)) {
-                return false;
-            }
-
             loadIncludedFile(FilePath.FullName);
-            return true;
         }
 
         // Resolve every include against the working directory, including nested ones.
