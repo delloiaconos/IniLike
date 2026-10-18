@@ -311,6 +311,15 @@ classDiagram
         +ConfigurationFile(DirectoryInfo BaseDirectory, string FileName)
         +ConfigurationFile(DirectoryInfo BaseDirectory, string FileName, bool CaseSensitive)
         %% Sections and parameters
+        +containsSection(string Name) bool
+        +tryGetSection(string Name, out strDictionary Parameters) bool
+        +containsParameter(string Section, string Parameter) bool
+        +tryGetParameter(string Section, string Parameter, out string Value) bool
+        +tryGetParameter(string Section, string Parameter, out bool Value) bool
+        +tryGetParameter(string Section, string Parameter, out int Value) bool
+        +tryGetParameter(string Section, string Parameter, out long Value) bool
+        +tryGetParameter(string Section, string Parameter, out float Value) bool
+        +tryGetParameter(string Section, string Parameter, out double Value) bool
         +checkSection(string SecName) bool
         +listSections() List~string~
         +listParameters() List~string~
@@ -324,19 +333,30 @@ classDiagram
         +getParameter(string SecName, string ParName, long DefaultVal) long
         +getParameter(string SecName, string ParName, int DefaultVal) int
         %% Tables
+        +containsTable(string Name) bool
+        +tryGetTable(string Name, out List~string~ Rows) bool
         +listTables() List~string~
         +getTable(string tablename) List~string~
         %% Dictionaries
+        +containsDictionary(string Name) bool
+        +tryGetDictionary(string Name, out strDictionary Entries) bool
         +listDictionaries() List~string~
         +getDictionary(string DictionaryName) strDictionary
         %% Lists
+        +containsList(string Name) bool
+        +tryGetList(string Name, out List~string~ Items) bool
         +listLists() List~string~
         +getList(string ListName) List~string~
         %% Text blocks
+        +containsText(string Name) bool
+        +tryGetText(string Name, out string Text) bool
         +listTexts() List~string~
         +getText(string TextName) string
         %% Encoded blocks
+        +containsEncoded(string Name) bool
+        +tryGetEncoded(string Name, out byte[] Data) bool
         +listEncoded() List~string~
+        +tryGetEncoded(string Name, bool Encoded, out byte[] Data) bool
         +getEncoded(string BlockName) byte[]
         +getEncoded(string BlockName, bool encoded) byte[]
         %% Persistence
@@ -400,6 +420,62 @@ Relative paths are resolved against the working directory when their path object
 | `setParameter(string sectionName, string parameterName, string value)` | Replaces an existing value; creates missing sections and keys only when `autoUpdateRegistry=true`. Otherwise missing entries are left unchanged. Stores text without parsing or trimming and preserves original name spelling and uses the selected case mode. Newly created entries are saved when `autoSaveRegistry=true`. |
 | `addParameter(section, key, defaultValue)` | When `autoUpdateRegistry=true`, adds a missing parameter in memory and creates its section if needed; otherwise makes no changes. Preserves existing values, including null. Stores text unchanged; new entries are saved when `autoSaveRegistry=true`. Null section/key names throw `ArgumentNullException`; empty names are allowed. |
 
+
+### Presence and explicit read results
+
+Presence checks and `tryGet` reads never create entries or write files, regardless
+of `autoUpdateRegistry` and `autoSaveRegistry`. Names use the selected case mode.
+Null names throw `ArgumentNullException`; empty names remain valid.
+
+| Presence check | Explicit read | Result when present |
+| --- | --- | --- |
+| `containsSection(Name)` | `tryGetSection(Name, out Parameters)` | Independent `Dictionary<string,string>` snapshot, preserving the name comparer. |
+| `containsTable(Name)` | `tryGetTable(Name, out Rows)` | Live `List<string>`, like `getTable`. |
+| `containsList(Name)` | `tryGetList(Name, out Items)` | Live `List<string>`, like `getList`. |
+| `containsDictionary(Name)` | `tryGetDictionary(Name, out Entries)` | Live `Dictionary<string,string>`. |
+| `containsText(Name)` | `tryGetText(Name, out Text)` | Raw lines joined with LF. |
+| `containsEncoded(Name)` | `tryGetEncoded(Name, out Data)` | Independent decoded `byte[]`. |
+| `containsParameter(Section, Parameter)` | `tryGetParameter(Section, Parameter, out Value)` | Stored string, or a successfully converted typed value. |
+
+Block reads return true even for empty blocks. Missing blocks return false and a
+null output, unlike the existing getters' empty collections/strings.
+`checkSection` remains available with the same presence semantics as `containsSection`.
+INCLUDE directives are expanded during loading and have no stored block to query;
+query the imported blocks using their respective APIs.
+
+`tryGetEncoded(Name, bool Encoded, out byte[] Data)` also supports canonical Base64
+ASCII bytes when `Encoded=true`; it returns an independent array in either mode.
+
+String parameter reads return true for an existing key even when its value is null
+or empty. A missing key/section returns false and null. Typed overloads support
+`bool`, `int`, `long`, `float` and `double`; false means missing, null, invalid or
+out of range, and the output is reset to false/zero. Use `containsParameter` and
+the string overload to distinguish these cases. The new typed reads:
+
+- Accept only `TRUE`/`FALSE` (ordinal, case-insensitive) and `1`/`0` for booleans.
+- Parse integers in invariant culture and reject values outside the destination range.
+- Trim whitespace and normalize decimal commas to periods for floating-point values.
+  Reject NaN, infinity and overflow, including values outside the float range.
+  Ordinary floating-point rounding and underflow still apply.
+
+Existing `getParameter` conversion and default behavior remains unchanged.
+
+```csharp
+List<string> rows;
+if (config.tryGetTable("ITEMS", out rows))
+{
+    // The table exists, even when rows.Count is zero.
+}
+
+int port;
+if (!config.tryGetParameter("SERVER", "port", out port))
+{
+    // Missing or invalid: handle explicitly without storing a default.
+}
+```
+
+Live collection edits follow the existing explicit-save rules; section snapshot
+edits do not alter the registry. Use parameter setters to update a section.
 
 Dictionary contents are accessed separately from section parameters:
 
@@ -673,4 +749,9 @@ may intentionally differ on first-`=` splitting, literal trailing punctuation or
 other updated rules. A mismatch requires review; it does not by itself establish
 a library regression. The probe does not test the consumer application linked
 against this DLL and is not proof of binary compatibility or Windows/.NET 3.5
-runtime compatibility. Those checks remain in [TODO.md](TODO.md).
+runtime compatibility. Those checks require separate validation.
+
+## License
+
+IniLike is licensed under the GNU Lesser General Public License, version 3
+(LGPL-3.0). See [LICENSE.md](LICENSE.md) for the license text.
