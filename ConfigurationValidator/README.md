@@ -35,7 +35,7 @@ mono ConfigurationValidator/bin/Release/ConfigurationValidator.exe examples/benc
 | --- | --- |
 | `--sections` | Section block names (key/value blocks with plain, `SEC` or `SECTION` headers). |
 | `--dictionaries` | Dictionary block names (`DICT` or `DICTIONARY`). |
-| `--tables` | Table block names (`TBL` or `TABLE`). |
+| `--tables` | Table block names (`TBL`, `TABLE` or `TAB`). |
 | `--lists` | List block names (`LST` or `LIST`). |
 | `--texts` | Text block names (`TEXT` or `TXT`). |
 | `--encoded` | Encoded block names (`ENCODED`, `ENC`, `BASE64` or `B64`). |
@@ -85,12 +85,9 @@ directives are not preserved and included files are left unchanged unless explic
 selected as the output destination. Missing files, cycles and included-file parsing
 errors produce exit code 1.
 
-Rewriting preserves trailing `;`, `,` and `.` in sections, dictionaries, tables
-and lists as literal content. It does not add punctuation terminators.
-
-Headers and data accept trailing comments using `parComment` (default `##`).
-Raw TEXT content preserves comment-like text; its headers and END markers still
-accept trailing comments.
+For punctuation, comments and raw TEXT rules, see the
+[library file format](../README.md#file-format). The validator uses the library's
+default case-sensitive mode; it does not expose a case-sensitivity switch.
 
 ## Diagnostics and exit codes
 

@@ -21,6 +21,8 @@ the same capitalization as `Section`, `Table`, `List`, `Dictionary`, `Text` and
 `LOAD`); `BlockTypes.None` represents the state outside a block and is associated
 with the `END` marker.
 
+Documentation: [validator usage](ConfigurationValidator/README.md).
+
 ## File format
 
 A **block** is the general unit introduced by a bracketed header. A **section** is
@@ -62,7 +64,7 @@ second; 20; inactive
   Entries are string keys and string values: `x = 3` stores `"3"`, and
   `y = 3.14` stores `"3.14"`. They use the same key/value parsing, trimming and
   comment rules as sections, splitting entries at the first `=` and ignoring lines without `=`.
-  Duplicate keys throw; keys differing in case remain distinct.
+  Duplicate keys throw; case-only differences are distinct only with `CaseSensitive=true`.
 - `[TEXT:NAME]` and `[TXT:NAME]` are equivalent plain-text block headers.
   Content supports Unicode and preserves whitespace, blank lines, `##` comment-looking
   lines, `=` and trailing punctuation. Any bracketed header starts a new block,
@@ -362,6 +364,8 @@ Relative paths are resolved against the working directory when their path object
 
 | Member | Behavior |
 | --- | --- |
+| `CaseSensitive` | Read-only property, true by default. Every constructor has an overload with this final bool argument; false selects ordinal case-insensitive names and keys. |
+| `autoUpdateRegistry` | Public get/set property, false by default. Enables creation of missing section parameters by parameter methods. |
 | `autoSaveRegistry` | Public get/set property, false by default. Saves the entire registry to its original file when a new parameter or section is created. Requires `autoUpdateRegistry=true` for creation through parameter methods. |
 | `ConfigurationFile(string filename)` | Loads the file immediately. Missing files and parsing errors cause exceptions. |
 | `ConfigurationFile(FileInfo FilePath)` | Loads the file represented by the typed path immediately. |
@@ -385,7 +389,7 @@ Relative paths are resolved against the working directory when their path object
 | `listEncoded()` | Returns an independent, ordinally sorted snapshot of encoded block names. |
 | `listSections()` | Returns section block names, excluding all other block types. |
 | `listParameters(string Section)` | Returns parameter names in the specified section. Missing or empty sections return an empty list; null throws `ArgumentNullException`. |
-| `listParameters()` | Returns distinct parameter names across all sections. The same name in multiple sections appears once; names differing in case remain distinct. |
+| `listParameters()` | Returns distinct parameter names across all sections. Names are deduplicated using the selected case mode and sorted ordinally. |
 | `listTables()` | Returns table block names, excluding all other block types. |
 | `dump()` | Returns a flushed UTF-8 `StreamWriter` backed by a memory stream, positioned at zero for reading. The caller must dispose it. |
 | `dump(StreamWriter Writer)` | Writes and flushes the registry at the supplied writer's current position without closing it. Null throws `ArgumentNullException`. |
@@ -534,51 +538,42 @@ The listing methods return independent `List<string>` snapshots sorted with `Str
 Changing a returned list does not modify the configuration; later in-memory changes are reflected only by a new call. Listing never creates blocks or writes files.
 Parameter listings contain names, not values.
 
-Delimiter settings are public readonly fields; `autoUpdateRegistry` is a public
-get/set property:
+### Parser settings and automatic updates
 
-```csharp
-char[] separators = config.parSeparator;
-char[] delimiters = config.parEndLineDelimiter;
-bool automaticUpdates = config.autoUpdateRegistry;
-config.autoUpdateRegistry = true;
-```
+`parComment` (default `##`) and `parSeparator` (default `=`) are public readonly
+arrays. Their existing elements remain mutable, but construction loads the input
+immediately; changing them later does not reparse it. There is no public reload
+method or constructor option for custom prefixes or separators.
+`parEndLineDelimiter` is an empty, unused readonly array retained for API compatibility.
+`CaseSensitive` is selected at construction, as shown in [Usage](#usage).
 
-The array references cannot be reassigned, but their elements remain mutable.
-The public readonly `parComment` array contains comment prefixes (default `##`).
-Changing its elements after construction does not reparse already loaded data;
-there is no public reload method or constructor option for custom prefixes.
-`parSeparator` defaults to `=`. `parEndLineDelimiter` is retained as an empty
-readonly array for API compatibility and is no longer used by parsing or saving.
-Changing separator elements after construction does not reload already parsed values.
-There is no public reload method.
-`autoUpdateRegistry` defaults to false for every constructor. Set the property to true or false at any time to enable
-or disable creation of missing entries. Changing it does not remove existing data
-or write files. The delimiter fields have no accessor properties or setter methods.
+The two runtime properties default to false and are independent:
 
-`setParameter` supports in-memory overrides. Subsequent `getParameter` calls use the new values and the usual type conversions. 
-Changes are persisted by explicit `save` calls or when creation triggers automatic saving.
-
-`addParameter` adds defaults only when a parameter is absent and automatic creation
-is enabled; `setParameter` also replaces existing values in either mode.
-Neither method writes files when `autoSaveRegistry=false` (the default).
-
-The `autoUpdateRegistry` flag controls creation; `autoSaveRegistry` separately controls saving new entries:
-
-| Operation | `autoUpdateRegistry=false` (default) | `autoUpdateRegistry=true` |
+| Operation | `autoUpdateRegistry=false` | `autoUpdateRegistry=true` |
 | --- | --- | --- |
-| `setParameter` | Updates existing parameters; missing entries are skipped. | Updates or creates parameters and their sections. |
+| `setParameter` | Updates existing parameters; skips missing entries. | Updates or creates parameters and their sections. |
 | `addParameter` | Makes no changes. | Creates missing parameters and sections; preserves existing values. |
-| `getParameter` (all overloads) | Returns defaults without storing them. | Stores missing defaults; later reads use the stored values. |
+| `getParameter` | Reads existing values; returns missing defaults without storing them. | Reads existing values; stores missing defaults. |
 
-`checkSection`, `getTable`, and listing methods never create entries. This replaces
-the old field name and changes setter creation behavior: callers that previously
-relied on unconditional creation must set the property to true before adding entries.
-Constructors do not accept an automatic-update argument; object initializers may
-be used to set the property immediately after construction.
-`checkSection` remains a pure existence check. 
-Explicit `save` calls and automatic saves of newly created entries write changes
-to disk. Both use the same serialization, validation and replacement procedure.
+When `autoSaveRegistry=true`, creation by these methods saves the entire registry
+to its original file. Existing-value updates and direct collection edits do not
+trigger saving. Enabling either property does not create or save anything.
+See [Saving](#saving) for destination rules and rollback on failure.
+Constructor bool arguments select case sensitivity, not automatic updates or saving.
+
+### Value and format limitations
+
+Null values may be stored in memory and returned by the string getter. Typed
+getters call `Trim()` and throw `NullReferenceException` for a stored null;
+`save` rejects null values. Empty names and empty string values are allowed.
+Integer casts can wrap and float casts can overflow; the numeric getters retain
+these legacy conversions rather than guaranteeing range-safe results.
+
+The parser is permissive: lines outside blocks and section/dictionary lines without
+`=` are ignored. Unknown bracketed identifiers become plain section names;
+keywords remain uppercase even in case-insensitive name mode. TABLE stores raw
+row strings rather than validating column counts or types. See [File format](#file-format)
+for comment handling, whitespace trimming and bracketed-row restrictions.
 
 Internally created readers and writers are disposed through `using` blocks, including on exceptions.
 Caller-supplied streams remain open.
@@ -602,7 +597,9 @@ make ms-build
 - `ms-build` is the default target: running `make` alone invokes MSBuild.
 - `x-build` explicitly uses the deprecated Mono xbuild tool: `make x-build`.
 - `clean` removes both projects' entire `bin` and `obj` directories, including Debug, Release, and stale build artifacts: `make clean`.
-- `test` runs the Python test runner, which builds its own temporary copy of the library. 
+- `test` builds the solution temporarily and runs library and console checks.
+- `test-examples` builds temporarily and validates every `examples/*.ini` file; see the
+  [validator guide](ConfigurationValidator/README.md#validate-all-examples).
   Build and test default to Release; select Debug with `CONFIGURATION=Debug`, for example `make test CONFIGURATION=Debug`. 
   Tests also require Python 3; override its command with `PYTHON=python3` if needed.
 - `IniLike.sln` contains the library and console validator projects.
@@ -658,4 +655,22 @@ The suite covers:
   under three cultures, including integer boundaries and overflow behavior.
 - Empty files, missing files, and duplicate sections, tables, and keys.
 - In-memory overrides and source file preservation.
-- The documented behavior of `addParameter`, the mutable `autoUpdateRegistry` property, and mutable elements of readonly delimiter arrays.
+- Automatic creation/saving and rollback, live table/list/dictionary collections,
+  missing versus empty blocks, and independent name listings.
+- Stream ownership, BOM/encoding, line-number diagnostics, and save/dump fidelity.
+- Console options, exit codes, rewrite output and input preservation.
+
+### Optional consumer comparison
+
+```sh
+python3 tests/run.py --operator-ui /path/to/OperatorUI.exe
+```
+
+The optional assembly must exist and expose `ConfigurationFilesReader.ConfigurationFile`.
+The runner builds and executes `tests/CompatibilityProbe.cs` with Mono, comparing
+selected parsing and parameter operations through reflection. An older consumer
+may intentionally differ on first-`=` splitting, literal trailing punctuation or
+other updated rules. A mismatch requires review; it does not by itself establish
+a library regression. The probe does not test the consumer application linked
+against this DLL and is not proof of binary compatibility or Windows/.NET 3.5
+runtime compatibility. Those checks remain in [TODO.md](TODO.md).
