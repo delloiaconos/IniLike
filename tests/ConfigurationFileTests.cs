@@ -96,8 +96,8 @@ class ConfigurationFileTests
         throws<ArgumentNullException>(delegate { new ConfigurationFile((string)null); });
         throws<ArgumentNullException>(delegate { new ConfigurationFile((DirectoryInfo)null, FileName); });
         throws<ArgumentNullException>(delegate { new ConfigurationFile(BaseDirectory, null); });
-        throws<Exception>(delegate { new ConfigurationFile(new FileInfo("missing.ini")); });
-        throws<Exception>(delegate { new ConfigurationFile(BaseDirectory, "missing.ini"); });
+        throws<FileNotFoundException>(delegate { new ConfigurationFile(new FileInfo("missing.ini")); });
+        throws<FileNotFoundException>(delegate { new ConfigurationFile(BaseDirectory, "missing.ini"); });
     }
 
     // Exercise streaming without allowing the parser to inspect or change position.
@@ -1322,7 +1322,28 @@ class ConfigurationFileTests
         equal(typeof(FileNotFoundException), Missing.GetType());
         sourceContext(Missing, Path.GetFullPath("missing.ini"), 0);
         equal(true, Missing.Message.Contains("Source '" + ConfigPath + "', line 2"));
-        sourceContext(captureError(delegate { new ConfigurationFile("missing.ini"); }), Path.GetFullPath("missing.ini"), 0);
+        foreach (string MissingPath in new string[] { "missing.ini", Path.Combine("absent-directory", "missing.ini") }) {
+            Action[] Constructors = new Action[] {
+                delegate { new ConfigurationFile(MissingPath); },
+                delegate { new ConfigurationFile(new FileInfo(MissingPath), false); },
+                delegate { new ConfigurationFile(new DirectoryInfo("."), MissingPath); }
+            };
+            Exception OpenError = captureError(delegate { using (FileStream Source = File.OpenRead(MissingPath)) { } });
+            foreach (Action Constructor in Constructors) {
+                Exception Error = captureError(Constructor);
+                equal(OpenError.GetType(), Error.GetType());
+                equal(OpenError.GetType(), Error.InnerException.GetType());
+                sourceContext(Error, Path.GetFullPath(MissingPath), 0);
+                if (Error is FileNotFoundException) {
+                    equal(((FileNotFoundException)OpenError).FileName, ((FileNotFoundException)Error).FileName);
+                }
+            }
+        }
+        // A cached FileInfo.Exists must not prevent opening a subsequently created file.
+        FileInfo Cached = new FileInfo("created-later.ini");
+        equal(false, Cached.Exists);
+        File.WriteAllText(Cached.FullName, "[S]\nk=v\n");
+        equal("v", new ConfigurationFile(Cached).getParameter("S", "k", ""));
         sourceContext(captureError(delegate { load("\n[INC: ]\n"); }), ConfigPath, 2);
         sourceContext(captureError(delegate { load("\n[INC:config.ini]\n"); }), ConfigPath, 2);
         using (MemoryStream Source = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("[S]\nk=1\nk=2\n"))) {
@@ -1673,7 +1694,7 @@ class ConfigurationFileTests
         test("getters return defaults without storing missing parameters", getterDefaults);
         test("empty file", delegate { equal(false, load("").checkSection("S")); });
         test("comments only", delegate { equal(0, load(" ## comment\n\n").getTable("S").Count); });
-        test("missing file", delegate { throws<Exception>(delegate { new ConfigurationFile("missing.ini"); }); });
+        test("missing file", delegate { throws<FileNotFoundException>(delegate { new ConfigurationFile("missing.ini"); }); });
         test("duplicate key", delegate { throws<ArgumentException>(delegate { load("[S]\nk=1\n k =2\n"); }); });
         test("duplicate section", delegate { throws<ArgumentException>(delegate { load("[S]\n[S]\n"); }); });
         test("duplicate table", delegate { throws<ArgumentException>(delegate { load("[TABLE:T]\n[TABLE:T]\n"); }); });

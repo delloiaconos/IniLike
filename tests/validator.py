@@ -34,7 +34,7 @@ def main():
         check(["one.ini", "two.ini"], 2, "expected exactly one", True)
         check([""], 2, "expected exactly one", True)
         check(["--help"], 0, "Exit codes:")
-        check(["missing.ini"], 1, "not found.", True)
+        check(["missing.ini"], 1, "FileNotFoundException:", True)
         cases = [
             ("valid file.ini", "[SEC:S]\nk=v\n[END:S]\n[LST:L]\na=b\n[END]\n", 0, "Sections: 1; tables: 0; lists: 1; dictionaries: 0; texts: 0; encoded: 0."),
             ("empty.ini", "", 0, "Sections: 0; tables: 0; lists: 0; dictionaries: 0; texts: 0; encoded: 0."),
@@ -90,7 +90,7 @@ def main():
         check(["--sections", listing.name, "--sections"], 0, outputs["--sections"], exact=True)
         check(["--unknown", listing.name], 2, "unknown option", True)
         check(["--sections", listing.name, "empty.ini"], 2, "expected exactly one", True)
-        check(["--parameters", "missing.ini"], 1, "not found.", True)
+        check(["--parameters", "missing.ini"], 1, "FileNotFoundException:", True)
         check(["--sections", "mismatch.ini"], 1, "FormatException:", True)
         dashed = root / "--sections"
         dashed.write_bytes(original)

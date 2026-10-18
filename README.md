@@ -264,6 +264,11 @@ For example, a duplicate key can report `Source '/configs/settings.ini', line 5:
 followed by the original error message. Nested include failures retain the failing
 file's location and add the locations of the include headers that led to it.
 File-open errors report `before reading` instead of assigning a fictitious row.
+Path constructors open the file directly: missing files throw `FileNotFoundException`,
+missing parent directories throw `DirectoryNotFoundException`, and access or other
+I/O failures retain their standard exception types, just as when opening a
+`FileStream`. The diagnostic wrapper retains the original open exception as
+`InnerException`; it does not replace I/O failures with a generic `Exception`.
 
 The exception's `Data` dictionary also exposes the innermost error location:
 
