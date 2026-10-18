@@ -4,7 +4,7 @@ IniLike is a standalone C# library for reading INI-like configuration files orga
 It targets .NET Framework 3.5. 
 The namespace and assembly name are **ConfigurationFilesReader**, and the public class is `ConfigurationFilesReader.ConfigurationFile`.
 
-The implementation uses one partial class across nine source files in
+The implementation uses one partial class across ten source files in
 `ConfigurationFilesReader/`: `ConfigurationFile.cs` holds shared settings and
 constructors; `ConfigurationFile.Parsing.cs` handles block identification and loading;
 `ConfigurationFile.Persistence.cs` handles dump/save and round-trip validation.
@@ -12,6 +12,9 @@ constructors; `ConfigurationFile.Parsing.cs` handles block identification and lo
 `ConfigurationFile.Dictionaries.cs`, `ConfigurationFile.Lists.cs`,
 `ConfigurationFile.Texts.cs` and `ConfigurationFile.Encoded.cs` hold the
 respective storage and access methods, including parameter methods in Sections.
+`ConfigurationFile.ReadOnly.cs` supplies collection views and snapshot creation;
+`ConfigurationSnapshot.cs` and `ReadOnlyStringDictionary.cs` define the immutable
+read API and the .NET 3.5 dictionary wrapper.
 
 The parser represents block kinds with the private `BlockTypes` enum and maps
 those kinds to their identifiers and aliases in the private readonly
@@ -558,6 +561,70 @@ config.save();
 operate on sections only. Direct dictionary mutations do not trigger automatic
 creation or saving; call `save` explicitly. Dictionary names and keys are sorted
 ordinally for dump/save, and the same round-trip validation applies to their values.
+
+### Read-only views and immutable snapshots
+
+Use these accessors to share collections without permitting edits through the
+returned reference. Existing mutable accessors keep their behavior.
+
+| Accessor | Result |
+| --- | --- |
+| `getTableReadOnly(Name)` | Live `ReadOnlyCollection<string>` of table rows. |
+| `getListReadOnly(Name)` | Live `ReadOnlyCollection<string>` of list items. |
+| `getDictionaryReadOnly(Name)` | Live `ReadOnlyStringDictionary` of dictionary entries. |
+
+A **view** reflects later changes made through the configuration's mutable APIs.
+Mutation attempts through collection interfaces throw `NotSupportedException`;
+casting the wrapper cannot recover the original mutable collection. Dictionary
+keys and values also reject mutations. `ReadOnlyStringDictionary` supports
+indexing, `Count`, `Keys`, `Values`, enumeration, `containsKey` and `tryGetValue`,
+plus the standard generic `IDictionary<string,string>` read operations.
+Names follow the configuration's case mode. Missing blocks return empty read-only
+collections without creating data; use `containsTable`, `containsList` or
+`containsDictionary` to distinguish missing from existing empty blocks. Null names
+throw `ArgumentNullException`. These reads never save or create entries.
+
+Use `createSnapshot()` for independent, stable data:
+
+```csharp
+var liveRows = config.getTableReadOnly("ITEMS");
+ConfigurationSnapshot snapshot = config.createSnapshot();
+config.getTable("ITEMS").Add("another row");
+// liveRows reflects the addition; snapshot.getTable("ITEMS") remains unchanged.
+```
+
+A **snapshot** copies all stored sections, tables, lists, dictionaries, text, binary
+data and loaded-file paths in memory, preserving nulls, empty blocks, original
+spelling, case mode, row order and values that cannot be serialized. It performs
+no parsing, I/O, default creation or saving. It has no setters, mutable registry
+properties, or save methods. Changes to the original configuration cannot change
+an existing snapshot. It does not retain caller streams, file handles or resolver
+callbacks.
+
+`ConfigurationSnapshot` provides:
+
+- Read-only `CaseSensitive`; `containsSection/Table/List/Dictionary/Text/Encoded`,
+  `containsParameter`, and `containsDictionaryValue` presence checks.
+- `getTable` and `getList` returning `ReadOnlyCollection<string>`;
+  `getDictionary` and `getSection` returning `ReadOnlyStringDictionary`.
+  Missing blocks return empty read-only collections; presence checks distinguish
+  them from existing empty blocks.
+- `getText` and both `getEncoded` overloads with existing missing-block semantics.
+  Binary results are defensive byte-array copies: editing a returned array cannot
+  alter snapshot data.
+- `listSections/Tables/Lists/Dictionaries/Texts/Encoded/LoadedFiles` and both
+  `listParameters` overloads returning sorted read-only collections.
+- String and typed `tryGetParameter` and `tryGetDictionaryValue` overloads with
+  the same conversions and null behavior as the configuration. Typed dictionary
+  reads also support the overload taking conversion options and an output status.
+
+All snapshot collections reject edits, including through generic collection
+interfaces. Returned dictionary keys/values cannot alter snapshot storage.
+The implementation uses .NET Framework 3.5 collection interfaces and wrappers;
+no newer `IReadOnly*` interfaces or immutable-collection packages are required.
+After construction, snapshots can be shared for concurrent reads. Creating a
+snapshot or enumerating a live view while the original configuration is being
+modified requires caller synchronization, like other configuration operations.
 
 ### Typed dictionary values
 

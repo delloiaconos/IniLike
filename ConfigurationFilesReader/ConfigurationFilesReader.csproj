@@ -82,6 +82,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ConfigurationFile.cs" />
+    <Compile Include="ConfigurationFile.ReadOnly.cs" />
+    <Compile Include="ConfigurationSnapshot.cs" />
+    <Compile Include="ReadOnlyStringDictionary.cs" />
     <Compile Include="ConfigurationLoadOptions.cs" />
     <Compile Include="DictionaryConversionOptions.cs" />
     <Compile Include="NullParameterValueException.cs" />

@@ -1272,6 +1272,103 @@ class ConfigurationFileTests
         }
     }
 
+    static void immutableSnapshots()
+    {
+        File.WriteAllText("child.ini", "[LIST:EMPTY]\n");
+        File.WriteAllText("config.ini", "[S]\nk=v\n[TABLE:T]\nrow\n[LIST:L]\nitem\n[DICT:D]\nk=value\n[TEXT:TXT]\n  raw text  \n[END]\n[ENC:B]\nAQID\n[INC:child.ini]\n");
+        ConfigurationFile Config = new ConfigurationFile("config.ini", false);
+        string Original = File.ReadAllText("config.ini");
+        Config.autoUpdateRegistry = true;
+        Config.setParameter("S", "null", (string)null);
+        Config.setParameter("S", "raw", "  unsavable\nvalue  ");
+        Config.getDictionary("D")["null"] = null;
+        Config.autoSaveRegistry = true;
+        System.Collections.ObjectModel.ReadOnlyCollection<string> Table = Config.getTableReadOnly("t");
+        System.Collections.ObjectModel.ReadOnlyCollection<string> List = Config.getListReadOnly("l");
+        ReadOnlyStringDictionary Dictionary = Config.getDictionaryReadOnly("d");
+        ConfigurationSnapshot Snapshot = Config.createSnapshot();
+        equal(false, Snapshot.CaseSensitive);
+        equal(true, Snapshot.containsList("empty"));
+        equal(false, Snapshot.containsList("missing"));
+        equal(0, Snapshot.getList("EMPTY").Count);
+        equal(0, Snapshot.getList("missing").Count);
+        equal(0, Snapshot.getTable("missing").Count);
+        equal(0, Snapshot.getDictionary("missing").Count);
+        equal(0, Snapshot.getSection("missing").Count);
+        equal(true, Snapshot.containsParameter("s", "NULL"));
+        equal(null, Snapshot.getSection("s")["NULL"]);
+        equal("  unsavable\nvalue  ", Snapshot.getSection("S")["raw"]);
+        equal(null, Snapshot.getDictionary("D")["NULL"]);
+        equal("  raw text  ", Snapshot.getText("txt"));
+        equal(2, Snapshot.listLoadedFiles().Count);
+        equal(true, Snapshot.containsEncoded("b"));
+        byte[] Bytes = Snapshot.getEncoded("B"); Bytes[0] = 99;
+        equal((byte)1, Snapshot.getEncoded("b")[0]);
+        equal("AQID", System.Text.Encoding.ASCII.GetString(Snapshot.getEncoded("b", true)));
+        Config.getTable("T")[0] = "changed";
+        Config.getTable("T").Add("new row");
+        Config.getList("L").Clear();
+        Config.getList("EMPTY").Add("new item");
+        Config.getDictionary("D")["k"] = "changed";
+        Config.getDictionary("D").Remove("null");
+        // Existing updates never save, even with automatic saving enabled.
+        Config.setParameter("S", "k", "changed");
+        equal("changed", Table[0]); equal(2, Table.Count);
+        equal(0, List.Count); equal("changed", Dictionary["K"]);
+        equal(false, Dictionary.containsKey("null"));
+        equal("row", Snapshot.getTable("T")[0]); equal(1, Snapshot.getTable("T").Count);
+        equal("item", Snapshot.getList("L")[0]); equal(0, Snapshot.getList("EMPTY").Count);
+        equal("value", Snapshot.getDictionary("D")["K"]);
+        equal(true, Snapshot.getDictionary("D").containsKey("null"));
+        equal("v", Snapshot.getSection("s")["K"]);
+        foreach (IList<string> Rows in new IList<string>[] { Table, List, Snapshot.getTable("T"), Snapshot.getList("L"), Snapshot.listSections(), Snapshot.listLoadedFiles() }) {
+            equal(true, Rows.IsReadOnly);
+            throws<NotSupportedException>(delegate { Rows.Add("bad"); });
+            throws<NotSupportedException>(delegate { Rows.Clear(); });
+            if (Rows.Count > 0) {
+                throws<NotSupportedException>(delegate { Rows[0] = "bad"; });
+                throws<NotSupportedException>(delegate { Rows.RemoveAt(0); });
+            }
+            System.Collections.IList NonGeneric = (System.Collections.IList)Rows;
+            throws<NotSupportedException>(delegate { NonGeneric.Add("bad"); });
+            throws<NotSupportedException>(delegate { NonGeneric.Clear(); });
+        }
+        foreach (IDictionary<string, string> Entries in new IDictionary<string, string>[] { Dictionary, Snapshot.getDictionary("D"), Snapshot.getSection("S") }) {
+            equal(true, Entries.IsReadOnly);
+            throws<NotSupportedException>(delegate { Entries["k"] = "bad"; });
+            throws<NotSupportedException>(delegate { Entries.Add("new", "bad"); });
+            throws<NotSupportedException>(delegate { Entries.Remove("k"); });
+            throws<NotSupportedException>(delegate { Entries.Clear(); });
+            ICollection<KeyValuePair<string, string>> Pairs = Entries;
+            throws<NotSupportedException>(delegate { Pairs.Add(new KeyValuePair<string, string>("new", "bad")); });
+            throws<NotSupportedException>(delegate { Pairs.Remove(new KeyValuePair<string, string>("k", "value")); });
+            throws<NotSupportedException>(delegate { Entries.Keys.Clear(); });
+            throws<NotSupportedException>(delegate { Entries.Values.Clear(); });
+            equal(false, Entries is Dictionary<string, string>);
+            int Count = 0;
+            foreach (KeyValuePair<string, string> Pair in Entries) { Count++; }
+            equal(Entries.Count, Count);
+            KeyValuePair<string, string>[] Copy = new KeyValuePair<string, string>[Entries.Count];
+            Pairs.CopyTo(Copy, 0);
+            equal(Entries.Count, Copy.Length);
+        }
+        string Raw;
+        equal(true, Snapshot.tryGetParameter("s", "k", out Raw)); equal("v", Raw);
+        equal(true, Snapshot.tryGetDictionaryValue("d", "null", out Raw)); equal(null, Raw);
+        throws<ArgumentNullException>(delegate { Config.getTableReadOnly(null); });
+        throws<ArgumentNullException>(delegate { Config.getListReadOnly(null); });
+        throws<ArgumentNullException>(delegate { Config.getDictionaryReadOnly(null); });
+        throws<ArgumentNullException>(delegate { Snapshot.getSection(null); });
+        equal(Original, File.ReadAllText("config.ini"));
+        Config.autoSaveRegistry = false;
+        Config.setParameter("NEW", "new", "new");
+        equal(false, Snapshot.containsSection("NEW"));
+        equal(1, Snapshot.listSections().Count);
+        ConfigurationSnapshot Empty = new ConfigurationFile().createSnapshot();
+        equal(true, Empty.CaseSensitive); equal(0, Empty.listLoadedFiles().Count);
+        equal(0, Empty.listSections().Count);
+    }
+
     static void typedDictionaryValues()
     {
         ConfigurationFile Config = load("[DICT:D]\ninteger=2147483647\nlong=9223372036854775807\ndecimal=1,25\ninvalid=oops\nempty=\nbool=TrUe\n[S]\ninteger=7\n");
@@ -1837,6 +1934,7 @@ class ConfigurationFileTests
         test("trailing punctuation is literal in sections, dictionaries, tables and lists", literalTrailingPunctuation);
         test("name comparison is selectable and defaults to case-sensitive", nameCaseSensitivity);
         test("sections and dictionaries split at the first separator and preserve values through saving", firstSeparator);
+        test("read-only views reject mutations and immutable snapshots retain all data", immutableSnapshots);
         test("typed dictionary reads expose status and explicit conversion policies", typedDictionaryValues);
         test("configurable include resolution and loaded dependency snapshots", includeResolution);
         test("load errors include source paths, filenames, line numbers and include chains", diagnosticContext);
