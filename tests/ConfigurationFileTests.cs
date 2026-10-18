@@ -1272,6 +1272,149 @@ class ConfigurationFileTests
         }
     }
 
+    static void location(SourceLocation Location, string Source, string FilePath, int Line)
+    {
+        equal(true, Location != null);
+        equal(Source, Location.SourceName);
+        equal(FilePath, Location.FilePath);
+        equal(Line, Location.LineNumber);
+    }
+
+    static void elementSources()
+    {
+        string Root = Path.GetFullPath("config.ini");
+        string Child = Path.GetFullPath("child.ini");
+        string Grand = Path.GetFullPath("grand.ini");
+        File.WriteAllText("grand.ini", "[DICT:Nested]\ng=3\n[LIST:Nested]\nlast\n");
+        File.WriteAllText("child.ini", "## child\n[SEC:Child]\np=2\n[TABLE:ChildRows]\nchild row\n[INC:grand.ini]\n");
+        string[] Lines = { "## root", "", "[SECTION:S] ## header", "ignored", " k = v ## value", "", "[DICT:D]", "d=1", "", "[TBL:T]", "", "## comment", "first", "second", "[END:T]", "[LST:L]", "a=b", "second item", "[END]", "[INC:child.ini]", "", "[TXT:Text]", "  raw  ", "[END]", "[B64:Binary]", "AQID", "[LIST:Empty]" };
+        SourceLocation Source;
+        foreach (string NewLine in new string[] { "\n", "\r\n", "\r" }) {
+            File.WriteAllText("config.ini", String.Join(NewLine, Lines));
+            ConfigurationFile Config = new ConfigurationFile("config.ini", false);
+            equal(true, Config.tryGetSectionSource("s", out Source)); location(Source, Root, Root, 3);
+            equal(true, Config.tryGetParameterSource("s", "K", out Source)); location(Source, Root, Root, 5);
+            equal(true, Config.tryGetDictionarySource("d", out Source)); location(Source, Root, Root, 7);
+            equal(true, Config.tryGetDictionaryValueSource("D", "D", out Source)); location(Source, Root, Root, 8);
+            equal(true, Config.tryGetTableSource("t", out Source)); location(Source, Root, Root, 10);
+            equal(true, Config.tryGetTableRowSource("T", 0, out Source)); location(Source, Root, Root, 13);
+            equal(true, Config.tryGetTableRowSource("T", 1, out Source)); location(Source, Root, Root, 14);
+            equal(true, Config.tryGetListSource("L", out Source)); location(Source, Root, Root, 16);
+            equal(true, Config.tryGetListItemSource("l", 0, out Source)); location(Source, Root, Root, 17);
+            equal(true, Config.tryGetListItemSource("L", 1, out Source)); location(Source, Root, Root, 18);
+            equal(true, Config.tryGetTextSource("text", out Source)); location(Source, Root, Root, 22);
+            equal(true, Config.tryGetEncodedSource("binary", out Source)); location(Source, Root, Root, 25);
+            equal(true, Config.tryGetListSource("empty", out Source)); location(Source, Root, Root, 27);
+            equal(true, Config.tryGetSectionSource("child", out Source)); location(Source, Child, Child, 2);
+            equal(true, Config.tryGetParameterSource("child", "p", out Source)); location(Source, Child, Child, 3);
+            equal(true, Config.tryGetTableRowSource("childrows", 0, out Source)); location(Source, Child, Child, 5);
+            equal(true, Config.tryGetDictionaryValueSource("Nested", "g", out Source)); location(Source, Grand, Grand, 2);
+            equal(true, Config.tryGetListItemSource("Nested", 0, out Source)); location(Source, Grand, Grand, 4);
+            equal(false, Config.tryGetSectionSource("missing", out Source)); equal(null, Source);
+            equal(false, Config.tryGetParameterSource("S", "missing", out Source)); equal(null, Source);
+            equal(false, Config.tryGetDictionaryValueSource("missing", "d", out Source)); equal(null, Source);
+            equal(false, Config.tryGetTableRowSource("T", -1, out Source)); equal(null, Source);
+            equal(false, Config.tryGetListItemSource("Empty", 0, out Source)); equal(null, Source);
+            equal(false, Config.tryGetTableRowSource("T", 2, out Source)); equal(null, Source);
+            ConfigurationSnapshot Snapshot = Config.createSnapshot();
+            Config.autoUpdateRegistry = true;
+            Config.setParameter("S", "k", "changed");
+            Config.setParameter("S", "new", "new");
+            Config.setParameter("NEW", "k", "v");
+            equal(true, Config.tryGetParameterSource("S", "k", out Source)); location(Source, Root, Root, 5);
+            equal(false, Config.tryGetParameterSource("S", "new", out Source)); equal(null, Source);
+            equal(false, Config.tryGetSectionSource("NEW", out Source)); equal(null, Source);
+            Config.getDictionary("D").Remove("d");
+            equal(false, Config.tryGetDictionaryValueSource("D", "d", out Source)); equal(null, Source);
+            Config.getDictionary("D")["d"] = "replaced";
+            equal(true, Config.tryGetDictionaryValueSource("D", "d", out Source)); location(Source, Root, Root, 8);
+            Config.getTable("T").Add("new");
+            equal(true, Config.tryGetTableRowSource("T", 0, out Source)); location(Source, Root, Root, 13);
+            equal(false, Config.tryGetTableRowSource("T", 2, out Source)); equal(null, Source);
+            Config.getTable("T").RemoveAt(0);
+            equal(false, Config.tryGetTableRowSource("T", 0, out Source)); equal(null, Source);
+            Config.getList("L")[0] = new string("a=b".ToCharArray());
+            equal(false, Config.tryGetListItemSource("L", 0, out Source)); equal(null, Source);
+            equal(true, Snapshot.tryGetTableRowSource("T", 0, out Source)); location(Source, Root, Root, 13);
+            equal(true, Snapshot.tryGetListItemSource("L", 0, out Source)); location(Source, Root, Root, 17);
+            equal(true, Snapshot.tryGetDictionaryValueSource("D", "d", out Source)); location(Source, Root, Root, 8);
+            ConfigurationSnapshot Edited = Config.createSnapshot();
+            equal(false, Edited.tryGetTableRowSource("T", 0, out Source)); equal(null, Source);
+            string Original = File.ReadAllText("config.ini");
+            Config.autoSaveRegistry = true;
+            equal(false, Config.tryGetParameterSource("not-created", "not-created", out Source));
+            equal(false, Config.containsSection("not-created"));
+            equal(Original, File.ReadAllText("config.ini"));
+            Config.save("copy.ini");
+            equal(true, Config.tryGetSectionSource("S", out Source)); location(Source, Root, Root, 3);
+            ConfigurationFile Reloaded = new ConfigurationFile("copy.ini");
+            equal(true, Reloaded.tryGetSectionSource("S", out Source)); equal(Path.GetFullPath("copy.ini"), Source.FilePath);
+            throws<ArgumentNullException>(delegate { Config.tryGetTableRowSource(null, 0, out Source); });
+            throws<ArgumentNullException>(delegate { Config.tryGetParameterSource("S", null, out Source); });
+            throws<ArgumentNullException>(delegate { Snapshot.tryGetDictionarySource(null, out Source); });
+        }
+        using (MemoryStream Stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("\n[S]\nk=v\n[INC:child.ini]\n"))) {
+            ConfigurationLoadOptions Options = new ConfigurationLoadOptions { SourceName = "uploaded settings" };
+            ConfigurationFile Named = new ConfigurationFile(Stream, Options);
+            Options.SourceName = "later";
+            equal(true, Named.tryGetParameterSource("S", "k", out Source)); location(Source, "uploaded settings", null, 3);
+            equal(true, Named.tryGetParameterSource("Child", "p", out Source)); location(Source, Child, Child, 3);
+            equal(2, Named.listLoadedFiles().Count);
+            equal(true, Named.createSnapshot().tryGetSectionSource("S", out Source)); location(Source, "uploaded settings", null, 2);
+            equal(true, Stream.CanRead);
+        }
+        using (MemoryStream Stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("[S]\nk=v"))) {
+            ConfigurationFile Anonymous = new ConfigurationFile(Stream);
+            equal(true, Anonymous.tryGetParameterSource("S", "k", out Source)); location(Source, "<stream>", null, 2);
+        }
+        File.WriteAllText("file-stream.ini", "[S]\nk=v");
+        using (FileStream Stream = File.OpenRead("file-stream.ini")) {
+            ConfigurationFile Named = new ConfigurationFile(Stream, new ConfigurationLoadOptions { SourceName = "friendly file" });
+            equal(true, Named.tryGetParameterSource("S", "k", out Source)); location(Source, "friendly file", Path.GetFullPath("file-stream.ini"), 2);
+            equal(Path.GetFullPath("file-stream.ini"), Named.listLoadedFiles()[0]);
+        }
+        foreach (string Text in new string[] { "[S]\nk=1\nk=2", "\n[ENC:B]\n!", "\n[S]\n[END:wrong]" }) {
+            using (MemoryStream Stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(Text))) {
+                Exception Error = captureError(delegate { new ConfigurationFile(Stream, new ConfigurationLoadOptions { SourceName = "uploaded settings" }); });
+                equal("uploaded settings", (string)Error.Data["SourceName"]);
+                equal("uploaded settings", (string)Error.Data["FilePath"]);
+                equal(Text.Contains("ENC") ? 2 : 3, (int)Error.Data["LineNumber"]);
+                equal(true, Error.Message.Contains("uploaded settings"));
+                equal(true, Error.InnerException != null);
+                equal(true, Stream.CanRead);
+            }
+        }
+        using (MemoryStream Stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("[INC:alias]"))) {
+            new ConfigurationFile(Stream, new ConfigurationLoadOptions {
+                SourceName = "virtual input",
+                IncludeResolver = delegate(string Name, string Parent) {
+                    if (Name == "alias") { equal(null, Parent); return "child.ini"; }
+                    equal(Child, Parent); return Name;
+                }
+            });
+        }
+        File.WriteAllText("file-stream.ini", "[S]\n[END:wrong]");
+        using (FileStream Stream = File.OpenRead("file-stream.ini")) {
+            Exception Error = captureError(delegate { new ConfigurationFile(Stream, new ConfigurationLoadOptions { SourceName = "friendly file" }); });
+            equal("friendly file", (string)Error.Data["SourceName"]);
+            equal(Path.GetFullPath("file-stream.ini"), (string)Error.Data["FilePath"]);
+            equal("file-stream.ini", (string)Error.Data["FileName"]);
+            equal(2, (int)Error.Data["LineNumber"]);
+        }
+        using (MemoryStream Stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("\n[INC:does-not-exist.ini]"))) {
+            Exception Error = captureError(delegate { new ConfigurationFile(Stream, new ConfigurationLoadOptions { SourceName = "uploaded settings" }); });
+            equal(typeof(FileNotFoundException), Error.GetType());
+            equal(Path.GetFullPath("does-not-exist.ini"), (string)Error.Data["SourceName"]);
+            equal(Path.GetFullPath("does-not-exist.ini"), (string)Error.Data["FilePath"]);
+            equal(0, (int)Error.Data["LineNumber"]);
+            equal(true, Error.Message.Contains("Source 'uploaded settings', line 2"));
+        }
+        using (MemoryStream Stream = new MemoryStream(new byte[0])) {
+            throws<ArgumentException>(delegate { new ConfigurationFile(Stream, new ConfigurationLoadOptions { SourceName = "  " }); });
+        }
+        equal(false, new ConfigurationFile().tryGetSectionSource("S", out Source)); equal(null, Source);
+    }
+
     static void immutableSnapshots()
     {
         File.WriteAllText("child.ini", "[LIST:EMPTY]\n");
@@ -1553,6 +1696,7 @@ class ConfigurationFileTests
     static void sourceContext(Exception Error, string Source, int Line)
     {
         equal(Source, (string)Error.Data["FilePath"]);
+        equal(Source, (string)Error.Data["SourceName"]);
         equal(Source == "<stream>" ? Source : Path.GetFileName(Source), (string)Error.Data["FileName"]);
         equal(Line, (int)Error.Data["LineNumber"]);
         equal(true, Error.Message.Contains(Source));
@@ -1934,6 +2078,7 @@ class ConfigurationFileTests
         test("trailing punctuation is literal in sections, dictionaries, tables and lists", literalTrailingPunctuation);
         test("name comparison is selectable and defaults to case-sensitive", nameCaseSensitivity);
         test("sections and dictionaries split at the first separator and preserve values through saving", firstSeparator);
+        test("parsed elements retain source locations across includes, named streams and snapshots", elementSources);
         test("read-only views reject mutations and immutable snapshots retain all data", immutableSnapshots);
         test("typed dictionary reads expose status and explicit conversion policies", typedDictionaryValues);
         test("configurable include resolution and loaded dependency snapshots", includeResolution);

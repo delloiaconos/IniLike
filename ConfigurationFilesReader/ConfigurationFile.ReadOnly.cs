@@ -44,6 +44,7 @@ namespace ConfigurationFilesReader
                 Copy.dictEncoded.Add(Entry.Key, (byte[])Entry.Value.Clone());
             }
             foreach (string Name in loadedFiles) { Copy.loadedFiles.Add(Name); }
+            copySourcesTo(Copy);
             return new ConfigurationSnapshot(Copy);
         }
     }

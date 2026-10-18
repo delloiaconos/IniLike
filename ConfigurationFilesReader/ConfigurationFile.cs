@@ -19,6 +19,7 @@ namespace ConfigurationFilesReader
         private readonly StringComparer NameComparer;
         private readonly FileInfo FilePath;
         private readonly string IncludeBaseDirectory;
+        private readonly string StreamSourceName;
         private readonly Func<string, string, string> IncludeResolver;
 
         public List<string> listLoadedFiles()
@@ -101,7 +102,7 @@ namespace ConfigurationFilesReader
                 string SourcePath = FileSource == null ? null : Path.GetFullPath(FileSource.Name);
                 if (SourcePath != null) { loadingFiles.Add(SourcePath); }
                 try {
-                    loadReader(Reader, SourcePath);
+                    loadReader(Reader, SourcePath, StreamSourceName ?? SourcePath);
                     if (SourcePath != null) { loadedFiles.Add(SourcePath); }
                 } finally {
                     if (SourcePath != null) { loadingFiles.Remove(SourcePath); }
@@ -132,6 +133,10 @@ namespace ConfigurationFilesReader
         private ConfigurationFile(ConfigurationLoadOptions Options, bool CaseSensitive)
         {
             if (Options != null) {
+                if (Options.SourceName != null && Options.SourceName.Trim().Length == 0) {
+                    throw new ArgumentException("SourceName must not be empty or whitespace.", "Options");
+                }
+                StreamSourceName = Options.SourceName;
                 IncludeBaseDirectory = Options.IncludeBaseDirectory == null ? null : Path.GetFullPath(Options.IncludeBaseDirectory);
                 IncludeResolver = Options.IncludeResolver;
             }

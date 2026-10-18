@@ -113,5 +113,45 @@ namespace ConfigurationFilesReader
         {
             return Data.tryGetDictionaryValue(DictionaryName, Key, Options, out Value, out Status);
         }
+        public bool tryGetSectionSource(string Name, out SourceLocation Location)
+        {
+            return Data.tryGetSectionSource(Name, out Location);
+        }
+        public bool tryGetTableSource(string Name, out SourceLocation Location)
+        {
+            return Data.tryGetTableSource(Name, out Location);
+        }
+        public bool tryGetListSource(string Name, out SourceLocation Location)
+        {
+            return Data.tryGetListSource(Name, out Location);
+        }
+        public bool tryGetDictionarySource(string Name, out SourceLocation Location)
+        {
+            return Data.tryGetDictionarySource(Name, out Location);
+        }
+        public bool tryGetTextSource(string Name, out SourceLocation Location)
+        {
+            return Data.tryGetTextSource(Name, out Location);
+        }
+        public bool tryGetEncodedSource(string Name, out SourceLocation Location)
+        {
+            return Data.tryGetEncodedSource(Name, out Location);
+        }
+        public bool tryGetParameterSource(string Name, string Key, out SourceLocation Location)
+        {
+            return Data.tryGetParameterSource(Name, Key, out Location);
+        }
+        public bool tryGetDictionaryValueSource(string Name, string Key, out SourceLocation Location)
+        {
+            return Data.tryGetDictionaryValueSource(Name, Key, out Location);
+        }
+        public bool tryGetTableRowSource(string Name, int Index, out SourceLocation Location)
+        {
+            return Data.tryGetTableRowSource(Name, Index, out Location);
+        }
+        public bool tryGetListItemSource(string Name, int Index, out SourceLocation Location)
+        {
+            return Data.tryGetListItemSource(Name, Index, out Location);
+        }
     }
 }

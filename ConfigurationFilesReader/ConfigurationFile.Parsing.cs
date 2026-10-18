@@ -123,6 +123,11 @@ namespace ConfigurationFilesReader
 
         private void loadReader(TextReader Reader, string SourcePath)
         {
+            loadReader(Reader, SourcePath, SourcePath);
+        }
+
+        private void loadReader(TextReader Reader, string SourcePath, string SourceName)
+        {
             string currentParent = "";
             BlockTypes reading = BlockTypes.None;
             StringBuilder Encoded = new StringBuilder();
@@ -155,7 +160,7 @@ namespace ConfigurationFilesReader
                             throw new FormatException("End label does not match the current block: '" + currentParent + "'.");
                         }
                         if (reading == BlockTypes.Encoded) {
-                            dictEncoded[currentParent] = decodeBase64AtSource(currentParent, Encoded.ToString(), SourcePath, BlockLineNumber);
+                            dictEncoded[currentParent] = decodeBase64AtSource(currentParent, Encoded.ToString(), SourcePath, BlockLineNumber, SourceName);
                             Encoded.Length = 0;
                         }
                         BlockLineNumber = LineNumber;
@@ -184,6 +189,9 @@ namespace ConfigurationFilesReader
                                 dictDictionaries.Add(currentParent, new strDictionary(NameComparer));
                                 break;
                         }
+                        if (reading != BlockTypes.None && reading != BlockTypes.Include) {
+                            recordBlockSource(reading, currentParent, SourcePath, SourceName, LineNumber);
+                        }
                     } else if (reading == BlockTypes.Encoded) {
                         Encoded.Append(currentLine);
                     } else if (reading == BlockTypes.Text) {
@@ -192,38 +200,49 @@ namespace ConfigurationFilesReader
                         string[] sline = currentLine.Split(parSeparator, 2);
                         if (sline.Length == 2) {
                             strDictionary Entries = reading == BlockTypes.Section ? dictSections[currentParent] : dictDictionaries[currentParent];
-                            Entries.Add(sline[0].Trim(), sline[1].Trim());
+                            string Key = sline[0].Trim();
+                            Entries.Add(Key, sline[1].Trim());
+                            sourceBlocks[reading][currentParent].Entries.Add(Key,
+                                new SourceLocation(SourceName, SourcePath, LineNumber));
                         }
                     } else if (reading == BlockTypes.Table || reading == BlockTypes.List) {
                         List<string> Rows = reading == BlockTypes.Table ? dictTables[currentParent] : dictLists[currentParent];
                         Rows.Add(currentLine);
+                        ParsedBlockSource Source = sourceBlocks[reading][currentParent];
+                        Source.Rows.Add(currentLine);
+                        Source.RowLocations.Add(new SourceLocation(SourceName, SourcePath, LineNumber));
                     }
                 }
                 if (reading == BlockTypes.Encoded) {
-                    dictEncoded[currentParent] = decodeBase64AtSource(currentParent, Encoded.ToString(), SourcePath, BlockLineNumber);
+                    dictEncoded[currentParent] = decodeBase64AtSource(currentParent, Encoded.ToString(), SourcePath, BlockLineNumber, SourceName);
                 }
             } catch (Exception Error) {
                 // Already annotated within this source (for example deferred Base64 decoding).
-                if (String.Equals(Error.Data["ContextSource"] as string, SourcePath ?? "<stream>", StringComparison.Ordinal)) {
+                if (String.Equals(Error.Data["ContextSource"] as string, SourceName ?? SourcePath ?? "<stream>", StringComparison.Ordinal)) {
                     throw;
                 }
-                throw withSourceContext(Error, SourcePath, LineNumber);
+                throw withSourceContext(Error, SourcePath, LineNumber, SourceName);
             }
         }
 
-        private static byte[] decodeBase64AtSource(string BlockName, string Encoded, string SourcePath, int LineNumber)
+        private static byte[] decodeBase64AtSource(string BlockName, string Encoded, string SourcePath, int LineNumber, string SourceName)
         {
             try {
                 return decodeBase64(BlockName, Encoded);
             } catch (FormatException Error) {
-                throw withSourceContext(Error, SourcePath, LineNumber);
+                throw withSourceContext(Error, SourcePath, LineNumber, SourceName);
             }
         }
 
         // Keep the original exception as the cause and preserve common exception types.
         private static Exception withSourceContext(Exception Error, string SourcePath, int LineNumber)
         {
-            string Source = SourcePath ?? "<stream>";
+            return withSourceContext(Error, SourcePath, LineNumber, null);
+        }
+
+        private static Exception withSourceContext(Exception Error, string SourcePath, int LineNumber, string SourceName)
+        {
+            string Source = SourceName ?? SourcePath ?? "<stream>";
             string Location = LineNumber > 0 ? "line " + LineNumber : "before reading";
             string Message = "Source '" + Source + "', " + Location + ": " + Error.Message;
             Exception Result;
@@ -245,10 +264,11 @@ namespace ConfigurationFilesReader
                 Result = new Exception(Message, Error);
             }
             // Retain the innermost source as structured data; messages describe the include chain.
-            Result.Data["FilePath"] = Error.Data.Contains("FilePath") ? Error.Data["FilePath"] : Source;
+            Result.Data["FilePath"] = Error.Data.Contains("FilePath") ? Error.Data["FilePath"] : (SourcePath ?? Source);
             Result.Data["FileName"] = Error.Data.Contains("FileName") ? Error.Data["FileName"] :
-                (SourcePath == null ? "<stream>" : Path.GetFileName(SourcePath));
+                (SourcePath == null ? Source : Path.GetFileName(SourcePath));
             Result.Data["LineNumber"] = Error.Data.Contains("LineNumber") ? Error.Data["LineNumber"] : LineNumber;
+            Result.Data["SourceName"] = Error.Data.Contains("SourceName") ? Error.Data["SourceName"] : Source;
             Result.Data["ContextSource"] = Source;
             return Result;
         }

@@ -4,7 +4,7 @@ IniLike is a standalone C# library for reading INI-like configuration files orga
 It targets .NET Framework 3.5. 
 The namespace and assembly name are **ConfigurationFilesReader**, and the public class is `ConfigurationFilesReader.ConfigurationFile`.
 
-The implementation uses one partial class across ten source files in
+The implementation uses one partial class across eleven source files in
 `ConfigurationFilesReader/`: `ConfigurationFile.cs` holds shared settings and
 constructors; `ConfigurationFile.Parsing.cs` handles block identification and loading;
 `ConfigurationFile.Persistence.cs` handles dump/save and round-trip validation.
@@ -15,6 +15,7 @@ respective storage and access methods, including parameter methods in Sections.
 `ConfigurationFile.ReadOnly.cs` supplies collection views and snapshot creation;
 `ConfigurationSnapshot.cs` and `ReadOnlyStringDictionary.cs` define the immutable
 read API and the .NET 3.5 dictionary wrapper.
+`ConfigurationFile.Sources.cs` stores provenance and provides source-location lookups.
 
 The parser represents block kinds with the private `BlockTypes` enum and maps
 those kinds to their identifiers and aliases in the private readonly
@@ -312,6 +313,80 @@ The original save destination remains the top-level file; configurations loaded
 from a stream still need an explicit destination. As with other save overloads,
 explicitly choosing an included file as a destination replaces that file.
 
+### Source locations for parsed elements
+
+The immutable `SourceLocation` class identifies where an element was parsed:
+
+| Property | Meaning |
+| --- | --- |
+| `SourceName` | Absolute filename by default, a supplied stream label, or `<stream>`. |
+| `FilePath` | Absolute physical filename, or null for an anonymous/named in-memory stream. |
+| `LineNumber` | One-based physical line number, including blank/comment lines. Stream lines count from the starting read position. |
+
+These side-effect-free lookups are available on both `ConfigurationFile` and
+`ConfigurationSnapshot`:
+
+| Method | Location |
+| --- | --- |
+| `tryGetSectionSource(Name, out Location)` | Section header. |
+| `tryGetTableSource(Name, out Location)` | TABLE header. |
+| `tryGetListSource(Name, out Location)` | LIST header. |
+| `tryGetDictionarySource(Name, out Location)` | DICT header. |
+| `tryGetTextSource(Name, out Location)` | TEXT header. |
+| `tryGetEncodedSource(Name, out Location)` | ENCODED header. |
+| `tryGetParameterSource(Name, Key, out Location)` | Section parameter's key/value line. |
+| `tryGetDictionaryValueSource(Name, Key, out Location)` | Dictionary entry's key/value line. |
+| `tryGetTableRowSource(Name, Index, out Location)` | Table row's data line. |
+| `tryGetListItemSource(Name, Index, out Location)` | List item's data line. |
+
+All return true with a location when provenance is available, otherwise false
+and null. Names/keys use the selected case mode; null names/keys throw
+`ArgumentNullException`. Row/item indices are zero-based; negative or out-of-range
+indices return false. Empty parsed blocks retain header locations. Ignored lines,
+comments and END markers do not create metadata. INCLUDE is expanded rather than
+stored: imported elements point to their own file and line, including nested includes.
+
+```csharp
+SourceLocation location;
+if (config.tryGetDictionaryValueSource("CHANNELS", "x", out location))
+{
+    Console.WriteLine("{0}:{1}", location.SourceName, location.LineNumber);
+}
+```
+
+Locations describe original declarations, not edit history. Existing section or
+dictionary keys retain their declaration location when their value changes. A
+removed dictionary key returns false; reusing an originally parsed key retains
+that original declaration location. Newly created blocks/keys have no parsed
+location. Existing live `List<string>` accessors cannot notify the library of
+arbitrary edits: a row/item lookup succeeds only when the original string object
+still occupies its original index. Appending rows preserves earlier locations;
+new rows, replaced strings and rows shifted to other indices have no location at
+those indices. Restoring the original string object/index restores its location.
+Equal text in a newly allocated string does not establish provenance.
+
+Snapshots retain an independent copy of provenance, with immutable location
+objects, alongside their copied data. Edits to the original cannot change snapshot
+locations. Creating a snapshot after edits preserves the same availability rules.
+Saving does not reassign locations; reloading saved output assigns locations from
+that new source. Source metadata is not serialized by dump/save.
+
+To name an in-memory stream, set `ConfigurationLoadOptions.SourceName` before
+constructing the configuration:
+
+```csharp
+var options = new ConfigurationLoadOptions { SourceName = "uploaded settings" };
+var config = new ConfigurationFile(stream, options);
+```
+
+The label is preserved verbatim in element locations and syntax-error diagnostics.
+Null selects the default; empty/whitespace-only labels throw `ArgumentException`.
+This option applies only to the root stream. It can also override a `FileStream`'s
+display name while retaining its physical `FilePath`. Included files keep their
+own filenames. Labels never become filesystem paths, INCLUDE resolver source
+arguments, dependency entries, or save destinations; anonymous streams still pass
+null as the resolver's source-path argument. Stream ownership is unchanged.
+
 ### Loading diagnostics
 
 Parser errors include the absolute source path (including filename) and a one-based
@@ -330,9 +405,10 @@ The exception's `Data` dictionary also exposes the innermost error location:
 
 | Key | Value |
 | --- | --- |
-| `FilePath` | Absolute source path, or `<stream>` for a stream without a filename. |
-| `FileName` | Filename without directories, or `<stream>`. |
+| `FilePath` | Absolute physical path; for a stream without a filename, its supplied label or `<stream>`. |
+| `FileName` | Physical filename without directories, or the stream label / `<stream>`. |
 | `LineNumber` | One-based line number; `0` if the file could not be opened. |
+| `SourceName` | Innermost failing source's display name, honoring a supplied stream label. |
 
 A `FileStream` supplies its filename for diagnostics without becoming the original
 save destination. Stream line numbers are counted from the starting read position.
