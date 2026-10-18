@@ -17,11 +17,14 @@ namespace ConfigurationFilesReader
             return Names;
         }
 
-        // Return an independent snapshot of the rows, or an empty list when missing.
+        // Return the live rows, or an unattached empty list when missing.
         public strTable getTable(string tablename)
         {
+            if (tablename == null) {
+                throw new ArgumentNullException("tablename");
+            }
             strTable Rows;
-            return dictTables.TryGetValue(tablename, out Rows) ? new strTable(Rows) : new strTable();
+            return dictTables.TryGetValue(tablename, out Rows) ? Rows : new strTable();
         }
     }
 }

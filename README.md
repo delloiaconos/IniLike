@@ -46,12 +46,18 @@ second; 20; inactive
   containing `key = value` pairs.
 - `[TABLE:NAME]`, `[TBL:NAME]` and `[TAB:NAME]` are equivalent table headers containing text rows.
   The library returns a `List<string>`;
-  callers are responsible for splitting rows into columns.
+  callers are responsible for splitting rows into columns using their specified
+  column separator. Separators such as `;` are preserved, including at row edges.
+  Blank or whitespace-only rows and rows starting with a `parComment` prefix
+  after trimming are intentionally ignored, so they do not occupy table rows.
+  A bracketed row is interpreted as a block header and ends the current table;
+  literal bracketed rows cannot currently be escaped. Support for those rows is
+  deferred to a future release.
 - `[LIST:NAME]` and `[LST:NAME]` are equivalent list headers. Every data line is
   one string item: `mach1;` remains `mach1;`, and `x1=mach1.volt1` remains the
   complete string `x1=mach1.volt1`. Items are not parsed as key/value pairs;
   order, punctuation and duplicates are preserved. Lists use the same whitespace
-  trimming and full-line comment rules as tables.
+  trimming and comment rules as tables.
 - `[DICT:NAME]` and `[DICTIONARY:NAME]` are equivalent dictionary headers.
   Entries are string keys and string values: `x = 3` stores `"3"`, and
   `y = 3.14` stores `"3.14"`. They use the same key/value parsing, trimming and
@@ -69,7 +75,7 @@ second; 20; inactive
 - `[ENCODED:NAME]` and `[ENC:NAME]` contain one Base64-encoded binary payload.
   `[BASE64:NAME]` and `[B64:NAME]` remain accepted aliases for the same block type.
   Data may span multiple lines, even within a four-character group. Blank lines
-  and full-line comments are ignored; spaces, tabs and line breaks within the
+  and comments are ignored; spaces, tabs and line breaks within the
   encoded data are accepted. Padding `=` is retained and punctuation is not
   stripped. Standard Base64 decoding uses `Convert.FromBase64String`; malformed
   input (including URL-safe `-`/`_` variants) throws `FormatException` during loading,
@@ -107,17 +113,23 @@ second; 20; inactive
   `TABLE:`, `TBL:`, `LIST:`, `LST:`, `DICT:`, `DICTIONARY:`, `TEXT:`, `TXT:`, `ENCODED:`, `ENC:`, `BASE64:`, `B64:`, `INCLUDE:`, `INC:`, `INPUT:`, `LINK:`, `LOAD:` and `END` keywords
   must be uppercase. Sections, tables, lists, dictionaries, text and encoded blocks have separate name spaces and may
   share a name.
-- Outside text blocks, blank lines and lines starting with any nonempty prefix in `parComment` after
-  trimming are ignored. The default prefix is `##`. Matching is ordinal and
-  case-sensitive, takes precedence over block headers, and applies only
-  to full-line comments. Null or empty prefix entries are ignored.
+- Comments use the nonempty prefixes in `parComment` (default `##`), matched
+  ordinally and case-sensitively. Outside raw TEXT content, the first matching
+  prefix anywhere on a line and everything after it are removed before parsing.
+  Whitespace before the comment is trimmed; a now-empty line is ignored.
+  Both `[TABLE:T] ## description` and `[END:T] ## finished` are valid headers,
+  and `key=value ## note` stores `value`. A separating space is not required.
+  Null or empty prefix entries are ignored. Quotes do not protect comment prefixes.
+  Raw TEXT content preserves comment-like text and whitespace, but block headers
+  and END markers inside TEXT also accept trailing comments. For example,
+  `[END] ## finished` ends TEXT, while `message ## literal` remains unchanged.
 - Outside text content, leading and trailing whitespace is trimmed from lines, block names, keys,
   and values. Trailing `;`, `,`, and `.` are literal content in section and
   dictionary values, table rows and list items; they are never stripped.
 - Section and dictionary entries split at the **first** `=` only. Additional
   `=` characters belong to the value: `expression = a=b;` stores `a=b;`.
   Lines without `=` are ignored; empty keys and values remain supported.
-- Quoting, escaping, multiline values, and inline comments are not supported.
+- Quoting, escaping and multiline parameter values are not supported.
   Quotes remain part of the value. A line such as `; comment` is treated as
   data inside a table.
 - Duplicate block names within their respective name spaces, or duplicate keys
@@ -361,7 +373,7 @@ Relative paths are resolved against the working directory when their path object
 | `getParameter(..., bool)` | `TRUE` (case-insensitive) and `1` are true; `FALSE` and `0` are false. Surrounding whitespace is ignored. Other stored values remain false, even when the default is true. |
 | `getParameter(..., double/float)` | Parses using invariant culture after replacing commas with periods. Returns the default if parsing fails. |
 | `getParameter(..., long/int)` | Parses an integer using invariant culture. Returns the default if parsing fails. The int overload parses as long and then performs an unchecked cast, so values outside the int range can wrap instead of returning the default. |
-| `getTable(name)` | Returns an independent `List<string>` snapshot of rows in their stored order, compatible with .NET Framework 3.5. Missing tables return a new empty list. Null throws `ArgumentNullException`. Editing the returned list does not modify the configuration or saved data. |
+| `getTable(name)` | Returns the live `List<string>` of rows for an existing table, including an empty one. Missing tables return a new, unattached empty list. Null throws `ArgumentNullException`. Direct edits change memory only; call `save()` to persist them. |
 | `getList(string ListName)` | Returns the mutable internal list of string items. A missing list returns a new, unattached empty list. Null throws `ArgumentNullException`. Never creates a list or triggers saving. |
 | `listLists()` | Returns an independent, ordinally sorted snapshot of list block names, excluding all other block types. |
 | `getDictionary(string DictionaryName)` | Returns the live `Dictionary<string, string>`. Missing names return an unattached empty dictionary; null throws `ArgumentNullException`. Does not create a registered dictionary. |
@@ -499,7 +511,7 @@ validation.
 in the destination directory, closes that file, and reloads it with
 the standard parser and checks that all names and values are preserved. Data the
 format cannot represent (for example null values, multiline values, or
-leading/trailing whitespace outside text blocks) causes `InvalidOperationException` rather than
+leading/trailing whitespace or literal comment prefixes outside text blocks) causes `InvalidOperationException` rather than
 a lossy save. No quoting or escaping is introduced.
 
 An existing destination is replaced with `File.Replace`; a new destination is
@@ -508,12 +520,13 @@ untouched and temporary files are cleaned up. Filesystem errors propagate;
 replacement requires filesystem support and does not fall back to truncating
 the destination. Concurrent changes to a configuration are not supported.
 
-`getTable(name)` returns a fresh row snapshot on every call. Adding, replacing,
-removing or clearing its rows affects only that returned list. This changes the
-previous behavior that exposed the stored mutable table. The return type remains
-`List<string>` and uses APIs available in .NET Framework 3.5. Getting or editing a
-snapshot never creates a table or triggers saving, even with automatic updates or
-saving enabled. List and dictionary accessors retain their existing live behavior.
+`getTable(name)` follows the same collection behavior as `getList` and
+`getDictionary`: an existing table, even when empty, returns its live collection.
+Adding, replacing, removing or clearing rows updates the in-memory table. A missing
+table returns a new, unattached empty list; editing that list does not create a table.
+Use `listTables()` to distinguish an empty table from a missing one. Neither reads
+nor direct row mutations trigger saving, even with `autoUpdateRegistry` or
+`autoSaveRegistry` enabled. Call `save()` explicitly to persist row changes.
 
 ## Limitations
 

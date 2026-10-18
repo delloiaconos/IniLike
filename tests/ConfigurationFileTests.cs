@@ -304,26 +304,37 @@ class ConfigurationFileTests
         equal(0, cfg.getTable("rows").Count);
         string Original = File.ReadAllText("config.ini");
         List<string> Other = cfg.getTable("ROWS");
-        equal(false, Object.ReferenceEquals(rows, Other));
+        equal(true, Object.ReferenceEquals(rows, Other));
         cfg.autoUpdateRegistry = true;
         cfg.autoSaveRegistry = true;
-        rows.Add("detached");
+        rows.Add("added");
         rows[0] = "replacement";
         rows.RemoveAt(1);
         equal(5, cfg.getTable("ROWS").Count);
-        equal("a;b;c;", cfg.getTable("ROWS")[0]);
-        equal("d;e.,;", cfg.getTable("ROWS")[1]);
-        equal("a;b;c;", Other[0]);
+        equal("replacement", Other[0]);
         rows.Clear();
-        equal(5, Other.Count);
-        equal(5, cfg.getTable("ROWS").Count);
-        equal(Original, File.ReadAllText("config.ini"));
-        cfg.getTable("EMPTY").Add("detached");
-        equal(0, cfg.getTable("EMPTY").Count);
-        equal(false, Object.ReferenceEquals(cfg.getTable("EMPTY"), cfg.getTable("EMPTY")));
+        equal(0, Other.Count);
+        equal(0, cfg.getTable("ROWS").Count);
+        equal(true, cfg.listTables().Contains("ROWS"));
+        List<string> Empty = cfg.getTable("EMPTY");
+        equal(0, Empty.Count);
+        equal(true, Object.ReferenceEquals(Empty, cfg.getTable("EMPTY")));
+        Empty.Add("first row");
+        equal("first row", cfg.getTable("EMPTY")[0]);
         throws<ArgumentNullException>(delegate { cfg.getTable(null); });
-        cfg.getTable("missing").Add("detached");
+        List<string> Missing = cfg.getTable("missing");
+        equal(0, Missing.Count);
+        Missing.Add("detached");
         equal(0, cfg.getTable("missing").Count);
+        equal(false, Object.ReferenceEquals(Missing, cfg.getTable("missing")));
+        equal(false, cfg.listTables().Contains("missing"));
+        equal(Original, File.ReadAllText("config.ini"));
+        cfg.save();
+        ConfigurationFile Reloaded = new ConfigurationFile("config.ini");
+        equal("first row", Reloaded.getTable("EMPTY")[0]);
+        equal(0, Reloaded.getTable("ROWS").Count);
+        equal(true, Reloaded.listTables().Contains("ROWS"));
+        equal(false, Reloaded.listTables().Contains("missing"));
     }
 
     static void numbers()
@@ -542,7 +553,7 @@ class ConfigurationFileTests
         equal(12, Reloaded.getParameter("NEW", "number", 0));
         equal(true, Reloaded.checkSection("EMPTY"));
         equal(0, Reloaded.getTable("EMPTY").Count);
-        equal("a;b;|.;", String.Join("|", Reloaded.getTable("S").ToArray()));
+        equal("a;b;|.;|x=y", String.Join("|", Reloaded.getTable("S").ToArray()));
         string OriginalDirectory = Environment.CurrentDirectory;
         try {
             Environment.CurrentDirectory = Path.Combine(OriginalDirectory, "output files");
@@ -588,8 +599,9 @@ class ConfigurationFileTests
         equal(false, File.Exists("new.ini"));
         ConfigurationFile Table = loadForUpdates("[TABLE:T]\nrow\n");
         Table.getTable("T").Add("## ignored");
-        Table.save("table-copy.ini");
-        equal("row", String.Join("|", new ConfigurationFile("table-copy.ini").getTable("T").ToArray()));
+        File.WriteAllText("table-copy.ini", Original);
+        throws<InvalidOperationException>(delegate { Table.save("table-copy.ini"); });
+        equal(Original, File.ReadAllText("table-copy.ini"));
         Config = new ConfigurationFile { autoUpdateRegistry = true };
         throws<DirectoryNotFoundException>(delegate { Config.save(Path.Combine("missing", "file.ini")); });
         Directory.CreateDirectory("directory.ini");
@@ -1509,7 +1521,7 @@ class ConfigurationFileTests
         test("file handles released after loading and parsing errors", fileHandles);
         test("empty container and all default overloads", defaults);
         test("sections, whitespace, delimiters, Unicode and literal values", parsing);
-        test("tables, transitions, case sensitivity and independent row snapshots", tables);
+        test("tables, transitions, case sensitivity and live row collections", tables);
         test("numeric conversions, boundaries and three cultures", numbers);
         test("boolean conversions", booleans);
         test("runtime overrides and file immutability", overrides);
