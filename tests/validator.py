@@ -101,6 +101,9 @@ def main():
                      "[TABLE:Alpha]\nrow\n[TABLE:Zulu]\ntableOnly=8\n"
                      "[LIST:Alpha]\nitem\n[LIST:Zulu]\nlistOnly=9\n"
                      "[DICT:Alpha]\nx=7\n[DICT:Zulu]\ndictOnly=6\n")
+        comments = root / "comments.ini"
+        comments.write_text("[TBL:T] ## table ]\nrow; ## comment\n[END:T] ## done\n[SEC:S] ## section\nk=value ## note\n", encoding="utf-8")
+        check([comments.name, "--rewrite"], 0, "[S]\nk=value\n[TABLE:T]\nrow;\n", exact=True)
         check([listing.name, "--rewrite"], 0, canonical, exact=True)
         check(["--rewrite", listing.name], 0, canonical, exact=True)
         punctuation = root / "punctuation.ini"

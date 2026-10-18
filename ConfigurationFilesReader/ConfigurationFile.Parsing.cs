@@ -54,15 +54,20 @@ namespace ConfigurationFilesReader
             return true;
         }
 
-        // Match full-line comments against the configured prefixes.
-        private bool isComment(string Line)
+        // Remove the earliest configured comment prefix and everything after it.
+        private string stripComment(string Line)
         {
+            int CommentStart = Line.Length;
             foreach (string Prefix in parComment) {
-                if (!String.IsNullOrEmpty(Prefix) && Line.StartsWith(Prefix, StringComparison.Ordinal)) {
-                    return true;
+                if (String.IsNullOrEmpty(Prefix)) {
+                    continue;
+                }
+                int Position = Line.IndexOf(Prefix, StringComparison.Ordinal);
+                if (Position >= 0 && Position < CommentStart) {
+                    CommentStart = Position;
                 }
             }
-            return false;
+            return Line.Substring(0, CommentStart);
         }
 
         // Load the configuration file content.
@@ -123,14 +128,17 @@ namespace ConfigurationFilesReader
                         break;
                     }
                     string RawLine = currentLine;
-                    currentLine = currentLine.Trim();
-                    if (reading != BlockTypes.Text && (currentLine.Length == 0 || isComment(currentLine))) {
-                        continue;
+                    string HeaderLine = stripComment(currentLine).Trim();
+                    if (reading != BlockTypes.Text) {
+                        currentLine = HeaderLine;
+                        if (currentLine.Length == 0) {
+                            continue;
+                        }
                     }
 
                     BlockTypes Type;
                     string Name;
-                    if (tryReadBlockHeader(currentLine, out Type, out Name)) {
+                    if (tryReadBlockHeader(HeaderLine, out Type, out Name)) {
                         if (Type == BlockTypes.None && reading != BlockTypes.None && Name != null &&
                             !NameComparer.Equals(Name, currentParent)) {
                             throw new FormatException("End label does not match the current block: '" + currentParent + "'.");

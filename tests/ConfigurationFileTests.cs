@@ -279,7 +279,7 @@ class ConfigurationFileTests
         equal(".;", get(cfg, "S", "dot"));
         equal("value ;", get(cfg, "S", "space"));
         equal("\"hello\";", get(cfg, "S", "quoted"));
-        equal("hello ## literal;", get(cfg, "S", "inline"));
+        equal("hello", get(cfg, "S", "inline"));
         equal("./ricette/;", get(cfg, "S", "path"));
         equal("caffè 日本;", get(cfg, "S", "unicode"));
         equal("last", get(cfg, "Other", "key"));
@@ -802,9 +802,9 @@ class ConfigurationFileTests
             typeof(ConfigurationFile).GetMethod("loadFile",
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(Config, null);
             equal("S", String.Join("|", Config.listSections().ToArray()));
-            equal("value // literal", get(Config, "S", "key"));
+            equal(Prefix == "//" ? "value" : "value // literal", get(Config, "S", "key"));
             equal("kept", get(Config, "S", "##key"));
-            equal("## kept|row // literal", String.Join("|", Config.getTable("T").ToArray()));
+            equal(Prefix == "//" ? "## kept|row" : "## kept|row // literal", String.Join("|", Config.getTable("T").ToArray()));
             equal(Text, File.ReadAllText("config.ini"));
         }
     }
@@ -1454,8 +1454,35 @@ class ConfigurationFileTests
         equal(".,;", Copy.getList("L")[0]);
     }
 
+    static void inlineComments()
+    {
+        const string Source = "[SEC:S] ## section ]\nk=value## note\nempty= ## nothing\n[END:S] ## close ]\n[DICT:D]## dictionary\nk=a=b; ## note\n[END]## close\n[TABLE:T] ## table\n;row; ## note\n ## ignored\n\n[END:T] ## close\n[LST:L] ## list\nitem.,;## note\n[END] ## close\n[ENC:E] ## encoded\nZg== ## payload\n[END] ## close\n[TEXT:X] ## text\n  raw ## preserved  \n## literal\n\n[END:X] ## close\n[AFTER] ## section\nk=last ## note\n";
+        ConfigurationFile Config = load(Source);
+        equal("value", get(Config, "S", "k"));
+        equal("", get(Config, "S", "empty"));
+        equal("a=b;", Config.getDictionary("D")["k"]);
+        equal(";row;", String.Join("|", Config.getTable("T").ToArray()));
+        equal("item.,;", Config.getList("L")[0]);
+        equal((byte)102, Config.getEncoded("E")[0]);
+        equal("  raw ## preserved  \n## literal\n", Config.getText("X"));
+        equal("last", get(Config, "AFTER", "k"));
+        Config.save("comments-copy.ini");
+        ConfigurationFile Copy = new ConfigurationFile("comments-copy.ini");
+        equal(Config.getText("X"), Copy.getText("X"));
+        equal(";row;", Copy.getTable("T")[0]);
+        File.WriteAllText("child.ini", "[TBL:CHILD] ## table\nrow ## note\n[END] ## end\n");
+        Config = load("[INCLUDE:child.ini] ## include\n[END:child.ini] ## end\n");
+        equal("row", Config.getTable("CHILD")[0]);
+        throws<FormatException>(delegate { load("[TABLE:T] ## open\n[END:wrong] ## close\n"); });
+        Config = loadForUpdates("[S]\nk=original\n");
+        Config.setParameter("S", "k", "value ## cannot round-trip");
+        throws<InvalidOperationException>(delegate { Config.save(); });
+        equal("[S]\nk=original\n", File.ReadAllText("config.ini"));
+    }
+
     static int Main()
     {
+        test("inline comments apply globally except raw TEXT content", inlineComments);
         test("trailing punctuation is literal in sections, dictionaries, tables and lists", literalTrailingPunctuation);
         test("name comparison is selectable and defaults to case-sensitive", nameCaseSensitivity);
         test("sections and dictionaries split at the first separator and preserve values through saving", firstSeparator);

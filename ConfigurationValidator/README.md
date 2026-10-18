@@ -88,6 +88,10 @@ errors produce exit code 1.
 Rewriting preserves trailing `;`, `,` and `.` in sections, dictionaries, tables
 and lists as literal content. It does not add punctuation terminators.
 
+Headers and data accept trailing comments using `parComment` (default `##`).
+Raw TEXT content preserves comment-like text; its headers and END markers still
+accept trailing comments.
+
 ## Diagnostics and exit codes
 
 Without listing or rewrite options, successful loading prints section, table,
